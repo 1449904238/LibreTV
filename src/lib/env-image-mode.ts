@@ -12,7 +12,7 @@ export function getEnvImageMode(): ImageModeValue | undefined {
   if (!raw) return undefined;
   if (raw === 'direct' || raw === 'proxy') return raw;
   console.warn(
-    '[LibreTV] DEFAULT_IMAGE_MODE 取值无效，已忽略（可选 direct / proxy）：',
+    '[fuhuiTV] DEFAULT_IMAGE_MODE 取值无效，已忽略（可选 direct / proxy）：',
     raw
   );
   return undefined;

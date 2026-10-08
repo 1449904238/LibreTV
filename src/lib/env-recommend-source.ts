@@ -10,7 +10,7 @@ export function getEnvRecommendSource(): RecommendSourceValue | undefined {
   if (!raw) return undefined;
   if (raw === 'douban' || raw === 'bangumi' || raw === 'hot-list') return raw;
   console.warn(
-    '[LibreTV] DEFAULT_RECOMMEND_SOURCE 取值无效，已忽略（可选 douban / bangumi / hot-list）：',
+    '[fuhuiTV] DEFAULT_RECOMMEND_SOURCE 取值无效，已忽略（可选 douban / bangumi / hot-list）：',
     raw
   );
   return undefined;

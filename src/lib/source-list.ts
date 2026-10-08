@@ -1,7 +1,7 @@
 import type { SourceListPayload } from './types';
 
 /**
- * 数据源订阅（LibreTV-SourceList JSON）的纯解析层：只做字段裁剪、去重与上限，
+ * 数据源订阅（fuhuiTV-SourceList JSON）的纯解析层：只做字段裁剪、去重与上限，
  * 不涉及网络与 SSRF 判定（点播/直播的地址放行策略不同，由调用方按类型分别校验）。
  *
  * 支持三种形态：

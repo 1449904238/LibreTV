@@ -19,7 +19,7 @@ export const MAX_PUBLISH_BYTES = 256 * 1024;
 /** 单个粘贴板的等待上限，避免某个服务卡住把整次发布拖死 */
 const TIMEOUT_MS = 15_000;
 
-const USER_AGENT = 'LibreTV/2.11 (+https://github.com/LibreSpark/LibreTV)';
+const USER_AGENT = 'fuhuiTV/2.11 (+https://github.com/LibreSpark/LibreTV)';
 
 interface Publisher {
   name: string;
@@ -51,7 +51,7 @@ const PUBLISHERS: Publisher[] = [
     name: '0x0.st',
     run: async (text, signal) => {
       const form = new FormData();
-      form.append('file', new Blob([text], { type: 'application/json' }), 'libretv-source-list.json');
+      form.append('file', new Blob([text], { type: 'application/json' }), 'fuhuitv-source-list.json');
       const res = await fetch('https://0x0.st', {
         method: 'POST',
         body: form,

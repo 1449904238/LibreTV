@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { afterEach, beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
-import { SESSION_COOKIE, checkPassword, checkRateLimit, clearRateLimit, sessionFromCookieHeader, signSession, verifySession } from './auth';
+import { SESSION_COOKIE, checkRateLimit, clearRateLimit, sessionAccountFromCookieHeader, sessionFromCookieHeader, signSession, verifySession } from './auth';
 
 /**
  * 会话鉴权单测：HMAC 签名/校验、过期、防篡改、密码恒定时间比较、登录限流。
@@ -21,7 +21,7 @@ describe('signSession / verifySession', () => {
   it(' freshly 签发的会话 token 校验通过', () => {
     const { token, expiresAt } = signSession();
     expect(expiresAt).toBeGreaterThan(Date.now());
-    expect(verifySession(token)).toBe(true);
+    expect(verifySession(token)).toBe('default');
   });
 
   it('过期会话被拒绝', () => {
@@ -30,7 +30,7 @@ describe('signSession / verifySession', () => {
     const { token } = signSession();
     // 快进 91 天（TTL 90 天）
     vi.setSystemTime(new Date('2026-04-02T00:00:00Z'));
-    expect(verifySession(token)).toBe(false);
+    expect(verifySession(token)).toBeNull();
     vi.useRealTimers();
   });
 
@@ -39,7 +39,7 @@ describe('signSession / verifySession', () => {
     const sig = token.slice(token.lastIndexOf('.') + 1);
     // 用与真实 TTL（90 天）不同的偏移构造新 payload，保证签名与 payload 不匹配
     const forged = `${String(Date.now() + 95 * 24 * 3600 * 1000)}.${sig}`;
-    expect(verifySession(forged)).toBe(false);
+    expect(verifySession(forged)).toBeNull();
   });
 
   it('用自算 HMAC 伪造签名也无法通过（密钥派生含盐）', () => {
@@ -47,36 +47,49 @@ describe('signSession / verifySession', () => {
     const payload = String(Date.now() + 60_000);
     const naiveSecret = crypto.createHash('sha256').update(TEST_PASSWORD).digest('hex');
     const naive = crypto.createHmac('sha256', naiveSecret).update(payload).digest('hex');
-    expect(verifySession(`${payload}.${naive}`)).toBe(false);
+    expect(verifySession(`${payload}.${naive}`)).toBeNull();
   });
 
   it('格式非法的 token 一律拒绝', () => {
-    expect(verifySession(undefined)).toBe(false);
-    expect(verifySession('')).toBe(false);
-    expect(verifySession('no-dot-token')).toBe(false);
-    expect(verifySession('.sig')).toBe(false);
-    expect(verifySession('abc.not-hex-sig')).toBe(false);
+    expect(verifySession(undefined)).toBeNull();
+    expect(verifySession('')).toBeNull();
+    expect(verifySession('no-dot-token')).toBeNull();
+    expect(verifySession('.sig')).toBeNull();
+    expect(verifySession('abc.not-hex-sig')).toBeNull();
+    expect(verifySession('a.b.c.d')).toBeNull();
+    expect(verifySession('bad id.123.sig')).toBeNull();
+  });
+
+  it('指定账号签发的 token 校验返回该账号 id', () => {
+    const { token } = signSession('acc_0123456789ab');
+    expect(verifySession(token)).toBe('acc_0123456789ab');
+  });
+
+  it('兼容老格式 token（无账号段视为默认账号）', () => {
+    // 老格式签名 payload 仅为过期时间戳（密钥派生与现逻辑一致）
+    const expires = Date.now() + 60_000;
+    const secret = crypto
+      .createHash('sha256')
+      .update(TEST_PASSWORD + ':libretv::session-salt')
+      .digest('hex');
+    const sig = crypto.createHmac('sha256', secret).update(String(expires)).digest('hex');
+    expect(verifySession(`${expires}.${sig}`)).toBe('default');
   });
 });
 
-describe('checkPassword', () => {
-  it('正确密码通过', () => {
-    expect(checkPassword(TEST_PASSWORD)).toBe(true);
+describe('sessionAccountFromCookieHeader', () => {
+  it('含有效会话的 Cookie 头返回账号 id', () => {
+    const { token } = signSession('acc_0123456789ab');
+    expect(sessionAccountFromCookieHeader(`${SESSION_COOKIE}=${token}`)).toBe('acc_0123456789ab');
+    expect(sessionAccountFromCookieHeader(`other=1; ${SESSION_COOKIE}=${token}; x=2`)).toBe(
+      'acc_0123456789ab'
+    );
   });
 
-  it('错误密码拒绝', () => {
-    expect(checkPassword('wrong')).toBe(false);
-    expect(checkPassword('')).toBe(false);
-  });
-
-  it('未配置 PASSWORD 时一律拒绝', () => {
-    const saved = process.env.PASSWORD;
-    delete process.env.PASSWORD;
-    try {
-      expect(checkPassword(TEST_PASSWORD)).toBe(false);
-    } finally {
-      process.env.PASSWORD = saved;
-    }
+  it('缺失 / 无效 Cookie 头返回 null', () => {
+    expect(sessionAccountFromCookieHeader(null)).toBeNull();
+    expect(sessionAccountFromCookieHeader('')).toBeNull();
+    expect(sessionAccountFromCookieHeader(`other=1`)).toBeNull();
   });
 });
 

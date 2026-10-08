@@ -23,7 +23,7 @@ describe('isTvboxPayload', () => {
     expect(isTvboxPayload({ lives: [] })).toBe(true);
   });
 
-  it('LibreTV 订阅与非法输入不误判', () => {
+  it('fuhuiTV 订阅与非法输入不误判', () => {
     expect(isTvboxPayload({ sources: [], liveSources: [] })).toBe(false);
     expect(isTvboxPayload([{ url: 'https://a.example.com/vod' }])).toBe(false);
     expect(isTvboxPayload(null)).toBe(false);
@@ -187,7 +187,7 @@ describe('parseSubscriptionPayload', () => {
     expect(result.liveSources).toHaveLength(1);
   });
 
-  it('LibreTV 订阅仍按原逻辑解析并带默认统计', () => {
+  it('fuhuiTV 订阅仍按原逻辑解析并带默认统计', () => {
     const result = parseSubscriptionPayload({
       name: '我的源列表',
       sources: [{ name: '点播', url: 'https://a.example.com/api.php/provide/vod' }],
@@ -200,7 +200,7 @@ describe('parseSubscriptionPayload', () => {
     expect(result.stats).toEqual({ format: 'libretv', skipped: 0, skippedByReason: {}, truncated: 0 });
   });
 
-  it('裸数组老格式仍按 LibreTV 解析', () => {
+  it('裸数组老格式仍按 fuhuiTV 解析', () => {
     const result = parseSubscriptionPayload([{ url: 'https://a.example.com/api.php/provide/vod' }]);
     expect(result.sources).toHaveLength(1);
     expect(result.stats?.format).toBe('libretv');

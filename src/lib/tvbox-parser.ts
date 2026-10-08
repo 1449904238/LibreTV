@@ -10,7 +10,7 @@ import {
 
 /**
  * TVBOX 配置 JSON 的解析层：把 `sites` / `lives` 归一化为本站的 SourceListPayload，
- * 使同一份订阅入口同时兼容 LibreTV-SourceList 与 TVBOX 两种格式。
+ * 使同一份订阅入口同时兼容 fuhuiTV-SourceList 与 TVBOX 两种格式。
  *
  * 仅导入「直连类」条目（与本站现有能力对齐）：
  * - 点播：type=1 的 JSON 接口（即 Apple CMS 采集站）；部分共享配置省略 type 或写成 0，
@@ -66,7 +66,7 @@ interface SkipCounter {
   samples: string[];
 }
 
-/** 空统计（LibreTV-SourceList 格式的默认值） */
+/** 空统计（fuhuiTV-SourceList 格式的默认值） */
 function emptyStats(format: SubscriptionParseStats['format']): SubscriptionParseStats {
   return { format, skipped: 0, skippedByReason: {}, truncated: 0 };
 }
@@ -206,7 +206,7 @@ export function isTvboxPayload(json: unknown): boolean {
 }
 
 /**
- * 解析订阅 JSON：自动识别格式（先判 TVBOX，后判 LibreTV-SourceList）。
+ * 解析订阅 JSON：自动识别格式（先判 TVBOX，后判 fuhuiTV-SourceList）。
  * 两者均不匹配时由 parseSourceListPayload 抛出格式错误。
  */
 export function parseSubscriptionPayload(json: unknown): SourceListPayload {
@@ -330,7 +330,7 @@ function collectVodSources(rawSites: unknown[], skipped: SkipCounter) {
       markSkipped(skipped, 'invalidUrl', name);
       continue;
     }
-    if (seen.has(url)) continue; // 重复条目静默跳过，与 LibreTV 订阅语义一致
+    if (seen.has(url)) continue; // 重复条目静默跳过，与 fuhuiTV 订阅语义一致
     if (sources.length >= MAX_VOD_SOURCES) {
       truncated += 1;
       continue;

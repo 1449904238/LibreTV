@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import Artplayer from 'artplayer';
 import Hls, { type HlsConfig } from 'hls.js';
 import { Spinner } from './states';
+import { attachVideoGestures } from '@/lib/video-gestures';
+import { attachPlayerLock } from '@/lib/player-lock';
+import { attachFullscreenRotateHint } from '@/lib/fullscreen-rotate';
 
 /**
  * 直播播放器：与点播 player-shell 完全独立。
@@ -310,7 +313,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
       mutex: true,
       backdrop: true,
       playsInline: true,
-      airplay: true,
+      autoOrientation: true,
       theme: '#2563eb',
       controls,
       lang: navigator.language.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en',
@@ -352,6 +355,18 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
       } catch { /* 忽略 */ }
     });
 
+    // 移动端触屏手势：左半屏上下滑调亮度 / 右半屏上下滑调音量
+    // （直播无进度条：不开横滑快进；直播跟播边缘：不开长按倍速）
+    const lockApi = attachPlayerLock(art, { showHint });
+    const detachRotateHint = attachFullscreenRotateHint(art, { showHint });
+
+    const detachGestures = attachVideoGestures(containerRef.current, art, {
+      enableSeek: false,
+      longPressDelay: 0,
+      showHint,
+      isLocked: lockApi.isLocked,
+    });
+
     // 15s 内未起播则提示
     const startTimer = setTimeout(() => {
       if (!playbackStarted && !disposed && !destroyed) {
@@ -363,6 +378,9 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
       disposed = true;
       clearTimeout(startTimer);
       if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+      detachGestures();
+      lockApi.detach();
+      detachRotateHint();
       cleanupEngines();
       art.destroy();
       artRef.current = null;

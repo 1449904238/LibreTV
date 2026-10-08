@@ -3,7 +3,7 @@ import { GET } from './route';
 import { SESSION_COOKIE, signSession } from '@/lib/auth';
 
 /**
- * 订阅接口单测：格式自动识别（LibreTV-SourceList / TVBOX）、统计透传，
+ * 订阅接口单测：格式自动识别（fuhuiTV-SourceList / TVBOX）、统计透传，
  * 以及服务端校验拦下条目时的提示。上游拉取与 SSRF 校验一律 mock，不产生网络请求。
  */
 
@@ -86,7 +86,7 @@ describe('GET /api/source-list', () => {
     expect(data.stats).toMatchObject({ format: 'tvbox', skipped: 3, skippedByReason: { spider: 2, xml: 1 } });
   });
 
-  it('LibreTV 源列表：沿用原格式与默认统计', async () => {
+  it('fuhuiTV 源列表：沿用原格式与默认统计', async () => {
     state.body = {
       name: '我的源列表',
       sources: [{ name: '点播', url: 'https://vod.example.com/api.php/provide/vod' }],

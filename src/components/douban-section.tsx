@@ -7,19 +7,27 @@ import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import type { DoubanItem } from '@/lib/types';
 import { DoubanCard } from './video-card';
+import { LatestSection } from './latest-section';
+import type { SearchResultItem } from '@/lib/types';
 
 const MOVIE_TAGS = ['热门', '最新', '经典', '豆瓣高分', '冷门佳片', '华语', '欧美', '韩国', '日本', '动画'];
 const TV_TAGS = ['热门', '美剧', '英剧', '韩剧', '日剧', '国产剧', '港剧', '日本动画', '综艺', '纪录片'];
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 
 /** 首页推荐区：数据源由设置决定（豆瓣热门 / Bangumi 新番放送 / 影视热榜），二选一展示 */
-export function RecommendSection({ onPick }: { onPick: (title: string) => void }) {
+export function RecommendSection({
+  onPick,
+  onOpen,
+}: {
+  onPick: (title: string) => void;
+  onOpen: (item: SearchResultItem) => void;
+}) {
   const doubanEnabled = useAppStore((s) => s.doubanEnabled);
   const recommendSource = useAppStore((s) => s.recommendSource);
 
   if (!doubanEnabled) return null;
   if (recommendSource === 'bangumi') return <BangumiView onPick={onPick} />;
-  if (recommendSource === 'hot-list') return <HotListView onPick={onPick} />;
+  if (recommendSource === 'hot-list') return <HotListView onPick={onPick} onOpen={onOpen} />;
   return <DoubanView onPick={onPick} />;
 }
 
@@ -146,20 +154,55 @@ const HOT_LISTS = [
   { id: 'baidu_teleplay', label: '百度热播剧' },
 ];
 
-/** 影视热榜（60s API）：豆瓣五个周榜 + 百度热播剧，chips 切换 */
-function HotListView({ onPick }: { onPick: (title: string) => void }) {
-  const [listId, setListId] = useState(HOT_LISTS[0].id);
+/** 豆瓣频道（复用 /api/douban，与榜单同版式，点片名搜全网） */
+const CHANNELS = [
+  { id: 'ch-movie-hot', label: '热门电影', type: 'movie' as const, tag: '热门' },
+  { id: 'ch-movie-top', label: '高分电影', type: 'movie' as const, tag: '豆瓣高分' },
+  { id: 'ch-tv-hot', label: '热门剧集', type: 'tv' as const, tag: '热门' },
+  { id: 'ch-tv-show', label: '热播综艺', type: 'tv' as const, tag: '综艺' },
+  { id: 'ch-tv-anime', label: '日本动漫', type: 'tv' as const, tag: '日本动画' },
+  { id: 'ch-tv-doc', label: '纪录片', type: 'tv' as const, tag: '纪录片' },
+];
 
-  const query = useQuery({
+/** 首页分类导航：每日最新（自有源聚合，可直接播放）+ 豆瓣频道 + 60s 榜单 */
+function HotListView({
+  onPick,
+  onOpen,
+}: {
+  onPick: (title: string) => void;
+  onOpen: (item: SearchResultItem) => void;
+}) {
+  const [listId, setListId] = useState<string>('daily-latest');
+  const isDaily = listId === 'daily-latest';
+  const channel = CHANNELS.find((c) => c.id === listId);
+  const hotQuery = useQuery({
     queryKey: ['hot-list', listId],
     queryFn: ({ signal }) => api.hotList(listId, signal),
+    enabled: !isDaily && !channel,
   });
-
-  const items = query.data?.items ?? [];
+  const doubanQuery = useQuery({
+    queryKey: ['hot-channel', listId],
+    queryFn: ({ signal }) => {
+      const ch = CHANNELS.find((c) => c.id === listId);
+      if (!ch) return Promise.reject(new Error('未知频道'));
+      return api.douban(ch.type, ch.tag, 0, 50, signal);
+    },
+    enabled: !!channel,
+  });
+  const activeQuery = channel ? doubanQuery : hotQuery;
+  const items = channel ? (doubanQuery.data?.items ?? []) : (hotQuery.data?.items ?? []);
 
   return (
-    <section aria-label="影视榜单推荐">
+    <section aria-label="影视分类推荐">
       <div className="flex flex-wrap gap-1.5 mb-4">
+        <ChipButton active={isDaily} onClick={() => setListId('daily-latest')}>
+          每日最新
+        </ChipButton>
+        {CHANNELS.map((c) => (
+          <ChipButton key={c.id} active={listId === c.id} onClick={() => setListId(c.id)}>
+            {c.label}
+          </ChipButton>
+        ))}
         {HOT_LISTS.map((l) => (
           <ChipButton key={l.id} active={listId === l.id} onClick={() => setListId(l.id)}>
             {l.label}
@@ -167,9 +210,11 @@ function HotListView({ onPick }: { onPick: (title: string) => void }) {
         ))}
       </div>
 
-      {query.isError ? (
+      {isDaily ? (
+        <LatestSection onOpen={onOpen} />
+      ) : activeQuery.isError ? (
         <p className="text-center text-sm text-faint py-8">推荐内容加载失败，可稍后重试或在设置中关闭</p>
-      ) : query.isLoading ? (
+      ) : activeQuery.isLoading ? (
         <GridSkeleton />
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
@@ -181,7 +226,6 @@ function HotListView({ onPick }: { onPick: (title: string) => void }) {
     </section>
   );
 }
-
 function GridSkeleton() {
   return (
     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">

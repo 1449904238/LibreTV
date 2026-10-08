@@ -95,6 +95,8 @@ export interface AuthStatusResponse {
   passwordRequired: boolean;
   /** 当前会话是否已验证 */
   verified: boolean;
+  /** 登录会话绑定的账号（未登录为 null；单密码模式登录后为默认账号） */
+  account: { id: string; name: string } | null;
   version: string;
   /** 部署者通过 DEFAULT_SOURCES 环境变量预置的采集站（未配置时为空数组） */
   defaultSources: SourceConfig[];
@@ -190,7 +192,7 @@ export interface SubscriptionParseStats {
 /**
  * 远程订阅解析结果。
  * `sources` 为点播源（Apple CMS 采集站），`liveSources` 为直播源（M3U + 可选 EPG）。
- * 兼容两种订阅格式：LibreTV-SourceList JSON 与 TVBOX 配置 JSON（`sites` / `lives`）。
+ * 兼容两种订阅格式：fuhuiTV-SourceList JSON 与 TVBOX 配置 JSON（`sites` / `lives`）。
  * 老格式订阅只有 `sources`，此时 `liveSources` 为空数组。
  */
 export interface SourceListPayload {

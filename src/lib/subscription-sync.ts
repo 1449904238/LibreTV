@@ -11,7 +11,7 @@ import type { AuthStatusResponse, SubscriptionParseStats } from './types';
  * - source-manager：用户在设置抽屉中手动添加/重新同步（UI 层加 toast 反馈）；
  * - providers：部署者通过 DEFAULT_SUBSCRIPTIONS 预置的订阅，启动时自动导入与静默重同步。
  *
- * 订阅内容由服务端自动识别格式（LibreTV-SourceList JSON 或 TVBOX 配置 JSON），
+ * 订阅内容由服务端自动识别格式（fuhuiTV-SourceList JSON 或 TVBOX 配置 JSON），
  * applySubscriptionSources / applySubscriptionLive 均按订阅前缀整体替换且保留
  * 用户勾选状态，同步失败时不调用即无副作用——旧数据自动保留。
  */
@@ -86,11 +86,11 @@ export async function syncEnvSubscriptions(subs: { url: string; name?: string }[
       }
       // 预置订阅对用户是静默的，跳过/截断情况写入控制台供部署者排查（只记计数，不打印配置内容）
       if (result?.stats && result.stats.skipped > 0) {
-        console.info('[LibreTV] 预置订阅部分条目未导入：', sub.url, describeParseStats(result.stats));
+        console.info('[fuhuiTV] 预置订阅部分条目未导入：', sub.url, describeParseStats(result.stats));
       }
       useAppStore.getState().markEnvSubsSeen([sub.url]);
     } catch (err) {
-      console.warn('[LibreTV] 预置订阅同步失败（下次启动将重试）：', sub.url, err instanceof Error ? err.message : err);
+      console.warn('[fuhuiTV] 预置订阅同步失败（下次启动将重试）：', sub.url, err instanceof Error ? err.message : err);
     }
   }
 }

@@ -12,10 +12,13 @@ import {
 } from '@/lib/video-prefetcher';
 import { loadCacheSettings } from '@/lib/video-cache';
 import { formatTime } from '@/lib/utils';
+import { attachVideoGestures } from '@/lib/video-gestures';
+import { attachPlayerLock } from '@/lib/player-lock';
+import { attachFullscreenRotateHint } from '@/lib/fullscreen-rotate';
 
 /**
  * 播放器外壳：ArtPlayer + hls.js（旧版 player.js 的 React 化）。
- * 保留：广告分片过滤、自动连播回调、进度回调、快捷键、移动端长按倍速、错误恢复。
+ * 保留：广告分片过滤、自动连播回调、进度回调、快捷键、移动端触屏手势（长按倍速/横滑快进/左亮度右音量）、错误恢复。
  * 移除：DOM 手工操作、watch.html 跳转链、localStorage 状态总线。
  */
 
@@ -77,6 +80,7 @@ export function PlayerShell({
     // 播放位置写进新集数的进度记录，导致换集后从上一集的时间点继续播放
     const mountCbs = { onTimeUpdate, onEnded, onPause, getRestorePosition };
 
+    let isPlayerLocked: () => boolean = () => false;
     let lastSave = 0;
     let lastPrefetchEnsure = 0;
     let playbackStarted = false;
@@ -215,7 +219,7 @@ export function PlayerShell({
       mutex: true,
       backdrop: true,
       playsInline: true,
-      airplay: true,
+      autoOrientation: true,
       hotkey: false,
       theme: '#2563eb',
       lang: navigator.language.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en',
@@ -295,6 +299,7 @@ export function PlayerShell({
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('button')) return;
       const current = artRef.current;
       if (!current) return;
+      if (isPlayerLocked()) return;
       if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); return; } // 由父层处理集数切换
       if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); return; }
       switch (e.key) {
@@ -320,38 +325,15 @@ export function PlayerShell({
     };
     document.addEventListener('keydown', shortcuts);
 
-    // —— 移动端长按 3 倍速 ——
-    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-    let isLongPress = false;
-    let originalRate = 1.0;
-    const el = containerRef.current;
+    // —— 移动端触屏手势：长按 3 倍速 + 横滑快进快退 + 左半屏亮度/右半屏音量（见 @/lib/video-gestures） ——
+    const lockApi = attachPlayerLock(art, { showHint });
+    isPlayerLocked = lockApi.isLocked;
+    const detachRotateHint = attachFullscreenRotateHint(art, { showHint });
 
-    const onTouchStart = (e: TouchEvent) => {
-      if (art.video?.paused) return;
-      originalRate = art.video.playbackRate;
-      longPressTimer = setTimeout(() => {
-        if (art.video?.paused) return;
-        art.video.playbackRate = 3.0;
-        isLongPress = true;
-        showHint('3 倍速');
-        e.preventDefault();
-      }, 500);
-    };
-    const onTouchEnd = () => {
-      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-      if (isLongPress) {
-        art.video.playbackRate = originalRate;
-        isLongPress = false;
-        showHint(`${originalRate} 倍速`);
-      }
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (isLongPress) e.preventDefault();
-    };
-    el?.addEventListener('touchstart', onTouchStart, { passive: false });
-    el?.addEventListener('touchend', onTouchEnd);
-    el?.addEventListener('touchcancel', onTouchEnd);
-    el?.addEventListener('touchmove', onTouchMove, { passive: false });
+    const gestureEl = containerRef.current;
+    const detachGestures = gestureEl
+      ? attachVideoGestures(gestureEl, art, { enableSeek: true, showHint, isLocked: lockApi.isLocked })
+      : () => {};
 
     // 双击全屏由 ArtPlayer 原生 DBCLICK_FULLSCREEN 处理（video:dblclick 不在其事件代理列表中，监听无效）
 
@@ -375,10 +357,9 @@ export function PlayerShell({
       document.removeEventListener('keydown', shortcuts);
       document.removeEventListener('visibilitychange', saveOnHide);
       if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
-      el?.removeEventListener('touchstart', onTouchStart);
-      el?.removeEventListener('touchend', onTouchEnd);
-      el?.removeEventListener('touchcancel', onTouchEnd);
-      el?.removeEventListener('touchmove', onTouchMove);
+      detachGestures();
+      lockApi.detach();
+      detachRotateHint();
       hlsRef.current?.destroy();
       hlsRef.current = null;
       recovery.dispose();

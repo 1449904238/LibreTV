@@ -1,13 +1,16 @@
 services:
-  libretv:
+  fuhuitv:
     build: .
     # 版本管理：镜像 tag 与 package.json 的 version 保持一致
     # - 使用者：不设置 LIBRETV_IMAGE 即拉取 ghcr.io/librespark/libretv:latest（首次部署用 docker compose pull）
     # - 开发者：docker compose up -d --build 会在本地构建并打上同名 tag
     # - 需要固定版本时设置 LIBRETV_IMAGE=ghcr.io/librespark/libretv:2.0.1
     image: ${LIBRETV_IMAGE:-ghcr.io/librespark/libretv:latest}
-    container_name: libretv
+    container_name: fuhuitv
     restart: unless-stopped
+    # .env 直通：让 .env 里所有变量（PASSWORD/DEFAULT_SOURCES/ACCOUNTS 等）都进容器，与本地一致
+    env_file:
+      - .env
     ports:
       - "8080:8080"
     # 无状态服务：观看历史在浏览器 IndexedDB、设置在 localStorage，无需挂载卷

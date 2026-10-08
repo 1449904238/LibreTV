@@ -4,7 +4,7 @@
 
 /*
  * 语义化配色（RGB 三元组，供 Tailwind 以 <alpha-value> 注入透明度）：
- * 深色主题沿用旧版 LibreTV 配色；浅色主题为对应的白底变体。
+ * 深色主题沿用旧版 fuhuiTV 配色；浅色主题为对应的白底变体。
  */
 :root {
   --c-page: 246 247 249;           /* #f6f7f9 */
@@ -36,7 +36,7 @@
 }
 
 .dark {
-  /* 旧版 LibreTV（backup-2025）赛博影视主题（整体调深一档）：深蓝黑底 + 霓虹蓝/粉点缀 */
+  /* 旧版 fuhuiTV（backup-2025）赛博影视主题（整体调深一档）：深蓝黑底 + 霓虹蓝/粉点缀 */
   --c-page: 11 16 26;              /* #0b101a 深蓝黑页面底色 */
   --c-surface: 20 28 41;           /* #141c29 弹窗/抽屉底色 */
   --c-surface-raised: 20 28 41;
@@ -133,7 +133,7 @@ body {
   color: rgb(var(--c-on-accent)) !important;
 }
 
-/* 品牌渐变字（沿用旧版 LibreTV 的霓虹蓝→霓虹粉） */
+/* 品牌渐变字（沿用旧版 fuhuiTV 的霓虹蓝→霓虹粉） */
 .brand-gradient {
   background: linear-gradient(to right, #00ccff, #ff3c78);
   -webkit-background-clip: text;

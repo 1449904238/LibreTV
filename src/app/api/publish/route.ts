@@ -75,7 +75,7 @@ export async function POST(req: Request) {
   // 与「导出数据源」保持同一种格式，发布出去的链接可以直接被本站或他人订阅
   const payload = JSON.stringify(
     {
-      name: normalized.name ?? 'LibreTV-SourceList',
+      name: normalized.name ?? 'fuhuiTV-SourceList',
       version: 2,
       exportedAt: Date.now(),
       sources: normalized.sources,

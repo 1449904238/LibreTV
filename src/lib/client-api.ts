@@ -141,6 +141,18 @@ export const api = {
     return searchStream(wd, sources, filterAdult, onSource, signal);
   },
 
+  /**
+   * 每日最新：聚合已选点播源 ac=videolist 第一页（默认按更新时间倒序），
+   * 服务端去重排序后返回，可直接进详情播放。
+   */
+  latest: (sources: SourceConfig[], filterAdult: boolean, signal?: AbortSignal) =>
+    request<{ items: SearchResultItem[]; okSources: number; totalSources: number }>('/api/latest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sources, filterAdult }),
+      signal,
+    }),
+
   detail: (id: string, source: SourceConfig, signal?: AbortSignal) => {
     const sp = new URLSearchParams({ id, source: JSON.stringify(source) });
     return request<VideoDetail>(`/api/detail?${sp.toString()}`, { signal });
@@ -179,7 +191,7 @@ export const api = {
       body: JSON.stringify({ url }),
     }),
 
-  /** 拉取远程数据源订阅（自动识别 LibreTV-SourceList JSON 与 TVBOX 配置 JSON） */
+  /** 拉取远程数据源订阅（自动识别 fuhuiTV-SourceList JSON 与 TVBOX 配置 JSON） */
   fetchSourceList: (url: string) => {
     const sp = new URLSearchParams({ url });
     return request<SourceListPayload>(`/api/source-list?${sp.toString()}`);

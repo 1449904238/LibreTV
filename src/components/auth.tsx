@@ -6,6 +6,7 @@ import { api, onUnauthorized, STATUS_QUERY_KEY } from '@/lib/client-api';
 import { applyEnvPresets } from '@/lib/subscription-sync';
 import type { AuthStatusResponse } from '@/lib/types';
 import { useToast } from './toast';
+import { useAppStore } from '@/lib/store';
 
 /**
  * 认证上下文：
@@ -18,6 +19,8 @@ type SetupRequired = boolean;
 interface AuthContextValue {
   checked: boolean;
   verified: boolean;
+  /** 当前登录账号的显示名（未登录为 null，用于展示当前线路） */
+  accountName: string | null;
   /** 服务器未设置 PASSWORD，需要管理员配置 */
   setupRequired: SetupRequired;
   /** /api/status 返回的应用版本（构建时从 package.json 注入） */
@@ -29,6 +32,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue>({
   checked: false,
   verified: false,
+  accountName: null,
   setupRequired: false,
   version: null,
   openLogin: () => {},
@@ -44,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [verified, setVerified] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
+  const [accountName, setAccountName] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -58,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setVerified(s.verified);
         setSetupRequired(!s.passwordRequired);
         setVersion(s.version);
+        setAccountName(s.account?.name ?? null);
         setChecked(true);
       })
       .catch(() => {
@@ -74,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const setup = (event as CustomEvent).detail === 'setup';
         setSetupRequired(setup);
         setVerified(false);
+        setAccountName(null);
         setModalOpen(true);
       }),
     []
@@ -86,7 +93,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await api.logout();
     } finally {
       setVerified(false);
-      toast('已退出登录', 'info');
+      setAccountName(null);
+      // 清掉服务端下发的预置源：登出后不应再看到上一个账号的源；
+      // 下次登录成功会重新拉取并下发（见 handleLoginSuccess）。
+      const s = useAppStore.getState();
+      s.setEnvSources([]);
+      s.setLiveEnvSources([]);
+      // 直接弹出登录框：退出后必须重新输入密码才能继续使用
+      setModalOpen(true);
+      toast('已退出登录，请输入密码', 'info');
     }
   }, [toast]);
 
@@ -97,25 +112,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 登录前以 401 失败的查询（如豆瓣推荐）需要重新拉取
     queryClient.invalidateQueries();
     toast('验证成功', 'success');
-    // 预置订阅（DEFAULT_SUBSCRIPTIONS）的首屏同步发生在登录之前，会 401 静默失败，
-    // 这里用缓存中的 /api/status 补跑一次（缓存缺失时回落为一次请求）
+    // 预置订阅（DEFAULT_SUBSCRIPTIONS）的首屏同步发生在登录之前，会 401 静默失败；
+    // 登录后强制刷新 /api/status（带上新 cookie）：多账号模式下返回当前账号的源，
+    // 若用缓存会拿到登录前的未验证快照导致源切换失效，故不用缓存。
     try {
-      const cached = queryClient.getQueryData<AuthStatusResponse>(STATUS_QUERY_KEY);
-      const status =
-        cached ??
-        (await queryClient.fetchQuery<AuthStatusResponse>({
-          queryKey: STATUS_QUERY_KEY,
-          queryFn: () => api.status(),
-          staleTime: 0,
-        }));
-      if (status) await applyEnvPresets(status);
+      const status = await queryClient.fetchQuery<AuthStatusResponse>({
+        queryKey: STATUS_QUERY_KEY,
+        queryFn: () => api.status(),
+        staleTime: 0,
+      });
+      setAccountName(status.account?.name ?? null);
+      await applyEnvPresets(status);
     } catch {
       // 补拉预置数据失败不影响登录后的正常使用
     }
   }, [toast, queryClient]);
 
   return (
-    <AuthContext.Provider value={{ checked, verified, setupRequired, version, openLogin, logout }}>
+    <AuthContext.Provider value={{ checked, verified, setupRequired, version, accountName, openLogin, logout }}>
       {children}
       {modalOpen && (
         <LoginModal

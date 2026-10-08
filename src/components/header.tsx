@@ -10,6 +10,7 @@ import { requestShowDownloadManager } from './download-manager';
 import { Icon } from './icon';
 import { SearchHistoryDropdown, useSearchHistory } from './search-history';
 import { cn } from '@/lib/utils';
+import { useAuth } from './auth';
 
 /** 顶部导航：Logo、搜索框（首页外）、历史、设置 */
 export function Header({ showSearch = false }: { showSearch?: boolean }) {
@@ -20,6 +21,7 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
   const [query, setQuery] = useState('');
   // 与首页搜索框共用同一套「最近搜索」下拉逻辑
   const searchHistory = useSearchHistory(query);
+  const { verified, logout } = useAuth();
 
   const submitSearch = (text: string) => {
     const q = text.trim().slice(0, 100);
@@ -39,9 +41,9 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
     <>
       <header className="sticky top-0 z-40 bg-surface/90 backdrop-blur border-b border-line">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
-          <Link href="/" aria-label="LibreTV 首页" className="flex items-center shrink-0">
+          <Link href="/" aria-label="fuhuiTV 首页" className="flex items-center shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/icons/icon-512.png" alt="LibreTV" className="w-7 h-7 rounded-lg" />
+            <img src="/icons/icon-512.png" alt="fuhuiTV" className="w-7 h-7 rounded-lg" />
           </Link>
 
           {showSearch && (
@@ -113,6 +115,11 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
             <IconButton label="设置" onClick={() => setSettingsOpen(true)}>
               <Icon name="gear" />
             </IconButton>
+            {verified && (
+              <IconButton label="退出登录" onClick={() => logout()}>
+                <Icon name="logout" />
+              </IconButton>
+            )}
           </nav>
         </div>
       </header>
