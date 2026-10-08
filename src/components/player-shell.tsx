@@ -14,7 +14,8 @@ import { loadCacheSettings } from '@/lib/video-cache';
 import { formatTime } from '@/lib/utils';
 import { attachVideoGestures } from '@/lib/video-gestures';
 import { attachPlayerLock } from '@/lib/player-lock';
-import { attachFullscreenRotateHint, attachMobileFullscreenLandscape } from '@/lib/fullscreen-rotate';
+import { attachFullscreenRotateHint, attachMobileFullscreenLandscape, isMobileDevice } from '@/lib/fullscreen-rotate';
+import { MobileNativeVideo } from '@/components/mobile-native-video';
 
 /**
  * 播放器外壳：ArtPlayer + hls.js（旧版 player.js 的 React 化）。
@@ -64,6 +65,7 @@ export function PlayerShell({
   // 起播前的品牌占位图（沿用旧版 nomedia 素材），实际开始播放后隐藏
   const [showPoster, setShowPoster] = useState(true);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isMobile] = useState(() => isMobileDevice());
   // 用 ref 持有最新回调，避免重建播放器
   const cbs = useRef({ onTimeUpdate, onEnded, onPause, getRestorePosition, onRequestSwitchSource });
   cbs.current = { onTimeUpdate, onEnded, onPause, getRestorePosition, onRequestSwitchSource };
@@ -71,6 +73,7 @@ export function PlayerShell({
   autoplayRef.current = autoplayNext;
 
   useEffect(() => {
+    if (isMobile) return;
     if (!containerRef.current || !url) return;
     setError('');
     setShowPoster(true);
@@ -370,7 +373,22 @@ export function PlayerShell({
       artRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, adFilter]);
+  }, [url, adFilter, isMobile]);
+
+  if (isMobile) {
+    return (
+      <MobileNativeVideo
+        url={url}
+        title={title}
+        adFilter={adFilter}
+        getRestorePosition={getRestorePosition}
+        onTimeUpdate={onTimeUpdate}
+        onEnded={onEnded}
+        onPause={onPause}
+        onRequestSwitchSource={onRequestSwitchSource}
+      />
+    );
+  }
 
   return (
     <div className="relative w-full h-full">

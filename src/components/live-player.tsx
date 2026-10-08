@@ -6,7 +6,8 @@ import Hls, { type HlsConfig } from 'hls.js';
 import { Spinner } from './states';
 import { attachVideoGestures } from '@/lib/video-gestures';
 import { attachPlayerLock } from '@/lib/player-lock';
-import { attachFullscreenRotateHint, attachMobileFullscreenLandscape } from '@/lib/fullscreen-rotate';
+import { attachFullscreenRotateHint, attachMobileFullscreenLandscape, isMobileDevice } from '@/lib/fullscreen-rotate';
+import { MobileNativeVideo } from '@/components/mobile-native-video';
 
 /**
  * 直播播放器：与点播 player-shell 完全独立。
@@ -69,6 +70,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
   const [osdTitle, setOsdTitle] = useState('');
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isMobile] = useState(() => isMobileDevice());
 
   // url 变化即换台：显示频道名 2.5s
   useEffect(() => {
@@ -88,6 +90,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
   };
 
   useEffect(() => {
+    if (isMobile) return;
     if (!containerRef.current || !url) return;
     setError('');
     setLoading(true);
@@ -390,6 +393,10 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, retryNonce, onPrevChannel, onNextChannel]);
+
+  if (isMobile) {
+    return <MobileNativeVideo url={url} title={title} live />;
+  }
 
   return (
     <div className="relative w-full h-full">
