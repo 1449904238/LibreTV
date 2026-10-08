@@ -14,7 +14,7 @@ import { loadCacheSettings } from '@/lib/video-cache';
 import { formatTime } from '@/lib/utils';
 import { attachVideoGestures } from '@/lib/video-gestures';
 import { attachPlayerLock } from '@/lib/player-lock';
-import { attachFullscreenRotateHint } from '@/lib/fullscreen-rotate';
+import { attachFullscreenRotateHint, attachMobileFullscreenLandscape } from '@/lib/fullscreen-rotate';
 
 /**
  * 播放器外壳：ArtPlayer + hls.js（旧版 player.js 的 React 化）。
@@ -329,6 +329,7 @@ export function PlayerShell({
     const lockApi = attachPlayerLock(art, { showHint });
     isPlayerLocked = lockApi.isLocked;
     const detachRotateHint = attachFullscreenRotateHint(art, { showHint });
+    const detachMobileFs = attachMobileFullscreenLandscape(art);
 
     const gestureEl = containerRef.current;
     const detachGestures = gestureEl
@@ -360,6 +361,7 @@ export function PlayerShell({
       detachGestures();
       lockApi.detach();
       detachRotateHint();
+      detachMobileFs();
       hlsRef.current?.destroy();
       hlsRef.current = null;
       recovery.dispose();

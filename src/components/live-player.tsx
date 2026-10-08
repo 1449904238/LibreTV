@@ -6,7 +6,7 @@ import Hls, { type HlsConfig } from 'hls.js';
 import { Spinner } from './states';
 import { attachVideoGestures } from '@/lib/video-gestures';
 import { attachPlayerLock } from '@/lib/player-lock';
-import { attachFullscreenRotateHint } from '@/lib/fullscreen-rotate';
+import { attachFullscreenRotateHint, attachMobileFullscreenLandscape } from '@/lib/fullscreen-rotate';
 
 /**
  * 直播播放器：与点播 player-shell 完全独立。
@@ -359,6 +359,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
     // （直播无进度条：不开横滑快进；直播跟播边缘：不开长按倍速）
     const lockApi = attachPlayerLock(art, { showHint });
     const detachRotateHint = attachFullscreenRotateHint(art, { showHint });
+    const detachMobileFs = attachMobileFullscreenLandscape(art);
 
     const detachGestures = attachVideoGestures(containerRef.current, art, {
       enableSeek: false,
@@ -381,6 +382,7 @@ export function LivePlayer({ url, title, onPrevChannel, onNextChannel }: LivePla
       detachGestures();
       lockApi.detach();
       detachRotateHint();
+      detachMobileFs();
       cleanupEngines();
       art.destroy();
       artRef.current = null;
