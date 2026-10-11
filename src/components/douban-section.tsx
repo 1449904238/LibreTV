@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/client-api';
 import { useAppStore } from '@/lib/store';
@@ -157,8 +157,22 @@ const HOT_LISTS = [
 /** 豆瓣频道（复用 /api/douban，与榜单同版式，点片名搜全网） */
 const CHANNELS = [
   { id: 'ch-movie-hot', label: '热门电影', type: 'movie' as const, tag: '热门' },
+  { id: 'ch-movie-new', label: '最新电影', type: 'movie' as const, tag: '最新' },
   { id: 'ch-movie-top', label: '高分电影', type: 'movie' as const, tag: '豆瓣高分' },
+  { id: 'ch-movie-classic', label: '经典电影', type: 'movie' as const, tag: '经典' },
+  { id: 'ch-movie-hidden', label: '冷门佳片', type: 'movie' as const, tag: '冷门佳片' },
+  { id: 'ch-movie-cn', label: '华语电影', type: 'movie' as const, tag: '华语' },
+  { id: 'ch-movie-west', label: '欧美电影', type: 'movie' as const, tag: '欧美' },
+  { id: 'ch-movie-kr', label: '韩国电影', type: 'movie' as const, tag: '韩国' },
+  { id: 'ch-movie-jp', label: '日本电影', type: 'movie' as const, tag: '日本' },
+  { id: 'ch-movie-anim', label: '动画电影', type: 'movie' as const, tag: '动画' },
   { id: 'ch-tv-hot', label: '热门剧集', type: 'tv' as const, tag: '热门' },
+  { id: 'ch-tv-cn', label: '国产剧集', type: 'tv' as const, tag: '国产剧' },
+  { id: 'ch-tv-us', label: '美剧', type: 'tv' as const, tag: '美剧' },
+  { id: 'ch-tv-kr', label: '韩剧', type: 'tv' as const, tag: '韩剧' },
+  { id: 'ch-tv-jp', label: '日剧', type: 'tv' as const, tag: '日剧' },
+  { id: 'ch-tv-hk', label: '港剧', type: 'tv' as const, tag: '港剧' },
+  { id: 'ch-tv-uk', label: '英剧', type: 'tv' as const, tag: '英剧' },
   { id: 'ch-tv-show', label: '热播综艺', type: 'tv' as const, tag: '综艺' },
   { id: 'ch-tv-anime', label: '日本动漫', type: 'tv' as const, tag: '日本动画' },
   { id: 'ch-tv-doc', label: '纪录片', type: 'tv' as const, tag: '纪录片' },
@@ -191,23 +205,46 @@ function HotListView({
   });
   const activeQuery = channel ? doubanQuery : hotQuery;
   const items = channel ? (doubanQuery.data?.items ?? []) : (hotQuery.data?.items ?? []);
+  // 推荐榜单分类整理：每日最新置顶，其次豆瓣频道，最后 60s 热榜；
+  // 超过 10 个默认折叠（与单源/聚合模式一致），当前选中的分类始终可见
+  const [navExpanded, setNavExpanded] = useState(false);
+  const navEntries = useMemo(
+    () => [
+      { id: 'daily-latest', label: '每日最新' },
+      ...CHANNELS.map((c) => ({ id: c.id, label: c.label })),
+      ...HOT_LISTS.map((l) => ({ id: l.id, label: l.label })),
+    ],
+    []
+  );
+  const visibleNav = useMemo(() => {
+    if (navExpanded || navEntries.length <= BROWSE_NAV_LIMIT) return navEntries;
+    const first = navEntries.slice(0, BROWSE_NAV_LIMIT);
+    if (!first.some((e) => e.id === listId)) {
+      const current = navEntries.find((e) => e.id === listId);
+      if (current) return [...first.slice(0, first.length - 1), current];
+    }
+    return first;
+  }, [navEntries, navExpanded, listId]);
+  const navCollapsed = navEntries.length - visibleNav.length;
 
   return (
     <section aria-label="影视分类推荐">
       <div className="flex flex-wrap gap-1.5 mb-4">
-        <ChipButton active={isDaily} onClick={() => setListId('daily-latest')}>
-          每日最新
-        </ChipButton>
-        {CHANNELS.map((c) => (
-          <ChipButton key={c.id} active={listId === c.id} onClick={() => setListId(c.id)}>
-            {c.label}
+        {visibleNav.map((e) => (
+          <ChipButton key={e.id} active={listId === e.id} onClick={() => setListId(e.id)}>
+            {e.label}
           </ChipButton>
         ))}
-        {HOT_LISTS.map((l) => (
-          <ChipButton key={l.id} active={listId === l.id} onClick={() => setListId(l.id)}>
-            {l.label}
+        {navCollapsed > 0 && (
+          <ChipButton active={false} onClick={() => setNavExpanded(true)}>
+            展开更多
           </ChipButton>
-        ))}
+        )}
+        {navExpanded && navEntries.length > BROWSE_NAV_LIMIT && (
+          <ChipButton active={false} onClick={() => setNavExpanded(false)}>
+            收起
+          </ChipButton>
+        )}
       </div>
 
       {isDaily ? (
@@ -226,6 +263,8 @@ function HotListView({
     </section>
   );
 }
+/** 推荐榜单导航展示上限：与分类浏览的前10折叠规则对齐 */
+const BROWSE_NAV_LIMIT = 10;
 function GridSkeleton() {
   return (
     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">

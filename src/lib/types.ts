@@ -203,3 +203,57 @@ export interface SourceListPayload {
   /** 解析统计（格式、跳过与截断），老数据可能缺失 */
   stats?: SubscriptionParseStats;
 }
+
+/** 首页浏览模式：单源分类 / 聚合分类 / 推荐榜单（现有豆瓣-Bangumi-热榜） */
+export type BrowseMode = 'single' | 'aggregate' | 'recommend';
+
+/** 苹果CMS分类（ac=list 的 class 条目） */
+export interface VodCategory {
+  /** 源站 type_id */
+  id: number;
+  name: string;
+}
+
+/** 单个源的分类拉取结果 */
+export interface SourceCategoriesResult {
+  sourceKey: string;
+  sourceName: string;
+  ok: boolean;
+  categories: VodCategory[];
+  error?: string;
+}
+
+/** 聚合后的分类：同名归一，refs 指回各源的 type_id */
+export interface MergedCategory {
+  key: string;
+  name: string;
+  /** 拥有该分类的源数量（用于排序与展示） */
+  sourceCount: number;
+  refs: { sourceKey: string; typeId: number }[];
+}
+
+/** /api/categories 响应：各源分类 + 聚合分类（服务端已归一，客户端直接用） */
+export interface CategoriesResponse {
+  sources: SourceCategoriesResult[];
+  merged: MergedCategory[];
+  /** 服务端已过滤掉的空分类数量（影片总数为 0 的分类） */
+  hiddenEmpty: number;
+  okSources: number;
+  totalSources: number;
+}
+
+/** /api/vod-list 单源模式响应 */
+export interface VodListResponse {
+  list: SearchResultItem[];
+  page: number;
+  pagecount: number;
+  total: number;
+}
+
+/** /api/vod-list 聚合模式响应 */
+export interface VodListAggregateResponse {
+  list: SearchResultItem[];
+  page: number;
+  okSources: number;
+  totalSources: number;
+}

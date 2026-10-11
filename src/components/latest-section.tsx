@@ -78,11 +78,6 @@ export function LatestSection({ onOpen }: { onOpen: (item: SearchResultItem) => 
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-base font-semibold text-content">每日最新</h2>
         <div className="flex items-center gap-2">
-          {query.data && (
-            <span className="text-xs text-faint">
-              {query.data.okSources}/{query.data.totalSources} 个源 · 按更新时间排序
-            </span>
-          )}
           {sources.length > 0 && (
             <button
               className={cn(

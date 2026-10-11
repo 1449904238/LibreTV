@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import type { SourceConfig, LiveSourceConfig, SourceSearchOutcome } from './types';
+import type { SourceConfig, LiveSourceConfig, SourceSearchOutcome, BrowseMode } from './types';
 import { clearLiveProbeResultsDb, loadLiveProbeResults, saveLiveProbeResults } from './db';
 import { PERSIST_KEY, createThrottledStorage } from './persist-storage';
 
@@ -21,6 +21,10 @@ export interface AppSettings {
   recommendSource: 'douban' | 'bangumi' | 'hot-list';
   /** 用户是否在设置中主动选择过推荐数据源；为 false 时部署者的 DEFAULT_RECOMMEND_SOURCE 默认值可生效 */
   recommendSourceTouched: boolean;
+  /** 首页浏览模式：单源分类 / 聚合分类 / 推荐榜单（默认推荐榜单，保持现有首页不变） */
+  browseMode: BrowseMode;
+  /** 单源分类模式的默认源 key（null 时自动取第一个可用源）；首页切换即持久化 */
+  defaultBrowseSourceKey: string | null;
   autoplayNext: boolean;
   imageProxyMode: 'direct' | 'proxy' | 'custom';
   /** 用户是否在设置中主动选择过封面图加载方式；为 false 时部署者的 DEFAULT_IMAGE_MODE 默认值可生效 */
@@ -294,6 +298,8 @@ export const useAppStore = create<AppState>()(
       doubanEnabled: true,
       recommendSource: 'hot-list',
       recommendSourceTouched: false,
+      browseMode: 'recommend',
+      defaultBrowseSourceKey: null,
       autoplayNext: true,
       // 直连优先：豆瓣封面有公共镜像 + 内置代理两级兜底（见 buildImageCandidates），
       // 默认省服务器流量；老用户保持已持久化的选择不受影响。
@@ -786,6 +792,8 @@ export const useAppStore = create<AppState>()(
         doubanEnabled: s.doubanEnabled,
         recommendSource: s.recommendSource,
         recommendSourceTouched: s.recommendSourceTouched,
+        browseMode: s.browseMode,
+        defaultBrowseSourceKey: s.defaultBrowseSourceKey,
         autoplayNext: s.autoplayNext,
         imageProxyMode: s.imageProxyMode,
         imageProxyModeTouched: s.imageProxyModeTouched,

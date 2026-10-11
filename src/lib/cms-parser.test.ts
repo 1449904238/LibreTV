@@ -9,7 +9,7 @@ import {
   normalizeTitle,
   parseDetail,
   parseDetailPageHtml,
-  parseSearchList,
+  parseSearchList,  parseVodCategories,
 } from './cms-parser';
 
 const source = { key: 'test', name: '测试源', url: 'https://api.example.com/provide/vod' };
@@ -202,5 +202,21 @@ describe('filterRelevantResults', () => {
   it('全部不相关时回退为原列表', () => {
     const junk = [{ name: '爸爸当家' }, { name: '爸爸别走' }];
     expect(filterRelevantResults(junk, wd)).toEqual(junk);
+  });
+});
+
+describe('parseVodCategories', () => {
+  it('解析 ac=list 的 class 数组', () => {
+    const data = { class: [{ type_id: 1, type_name: '电影' }, { type_id: '2', type_name: ' 剧集 ' }] };
+    expect(parseVodCategories(data)).toEqual([
+      { id: 1, name: '电影' },
+      { id: 2, name: '剧集' },
+    ]);
+  });
+
+  it('丢弃非法条目，无分类时返回空数组', () => {
+    expect(parseVodCategories({ class: [{ type_id: 'x' }, { type_name: '电影' }, null] })).toEqual([]);
+    expect(parseVodCategories({})).toEqual([]);
+    expect(parseVodCategories(null)).toEqual([]);
   });
 });

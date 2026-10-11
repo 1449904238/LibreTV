@@ -206,3 +206,30 @@ export function filterRelevantResults<T extends { name?: string }>(items: T[], w
   const filtered = items.filter((item) => isRelevant(item.name || '', wd));
   return filtered.length > 0 ? filtered : items;
 }
+
+/** 苹果CMS分类条目（ac=list / videolist 响应中的 class 数组元素） */
+export interface VodCategoryRaw {
+  id: number;
+  name: string;
+}
+
+/**
+ * 解析苹果CMS分类列表：ac=list 响应为 { class: [{ type_id, type_name }, ...] }，
+ * 部分源的 ac=videolist 响应里同样带有 class 字段，可复用本函数做兜底。
+ * 非法条目（缺 id/name）直接丢弃；整体无有效分类时返回空数组（调用方按"该源无分类"展示）。
+ */
+export function parseVodCategories(data: unknown): VodCategoryRaw[] {
+  if (!data || typeof data !== 'object') return [];
+  const cls = (data as { class?: unknown }).class;
+  if (!Array.isArray(cls)) return [];
+  const out: VodCategoryRaw[] = [];
+  for (const raw of cls) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const id = typeof r.type_id === 'number' ? r.type_id : parseInt(String(r.type_id ?? ''), 10);
+    const name = typeof r.type_name === 'string' ? r.type_name.trim() : '';
+    if (!Number.isFinite(id) || !name) continue;
+    out.push({ id, name });
+  }
+  return out;
+}

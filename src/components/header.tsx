@@ -9,6 +9,7 @@ import { HistoryPanel } from './history-panel';
 import { requestShowDownloadManager } from './download-manager';
 import { Icon } from './icon';
 import { SearchHistoryDropdown, useSearchHistory } from './search-history';
+import { MediaTabs } from './media-tabs';
 import { cn } from '@/lib/utils';
 import { useAuth } from './auth';
 
@@ -21,7 +22,7 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
   const [query, setQuery] = useState('');
   // 与首页搜索框共用同一套「最近搜索」下拉逻辑
   const searchHistory = useSearchHistory(query);
-  const { verified, logout } = useAuth();
+  const { verified, logout, openLogin } = useAuth();
 
   const submitSearch = (text: string) => {
     const q = text.trim().slice(0, 100);
@@ -99,9 +100,7 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
           <div className="flex-1 sm:hidden" />
 
           <nav className="flex items-center gap-1 ml-auto">
-            <HeaderLink href="/live" active={pathname === '/live'}>
-              直播
-            </HeaderLink>
+            <MediaTabs />
             <HeaderLink href="/about" active={pathname === '/about'}>
               关于
             </HeaderLink>
@@ -115,6 +114,11 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
             <IconButton label="设置" onClick={() => setSettingsOpen(true)}>
               <Icon name="gear" />
             </IconButton>
+            {!verified && (
+              <button className="ml-1 px-3 py-1.5 rounded-md text-sm bg-accent text-on-accent transition-colors hover:opacity-90" onClick={() => openLogin()}>
+                登录
+              </button>
+            )}
             {verified && (
               <IconButton label="退出登录" onClick={() => logout()}>
                 <Icon name="logout" />

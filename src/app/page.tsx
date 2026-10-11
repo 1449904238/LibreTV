@@ -24,6 +24,42 @@ import { SiteFooter } from '@/components/site-footer';
 /** 搜索结果分批渲染的批大小：一次挂载上千张卡片会明显掉帧 */
 const RESULT_PAGE_SIZE = 60;
 
+/** 返回搜索列表时还原现场：sessionStorage（同标签页、一次有效）记住展开数与滚动位置 */
+const SEARCH_UI_KEY = 'fuhuiTV:search-ui:v1';
+interface SavedSearchUi { q: string; visibleCount: number; scrollY: number }
+function loadSavedSearchUi(q: string): SavedSearchUi | null {
+  if (typeof window === 'undefined' || !q) return null;
+  try {
+    const raw = sessionStorage.getItem(SEARCH_UI_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Partial<SavedSearchUi>;
+    if (s.q === q && Number.isFinite(s.visibleCount) && Number.isFinite(s.scrollY)) {
+      return {
+        q,
+        visibleCount: Math.min(600, Math.max(RESULT_PAGE_SIZE, Math.floor(s.visibleCount as number))),
+        scrollY: Math.max(0, s.scrollY as number),
+      };
+    }
+  } catch {
+    // 快照损坏时放弃还原
+  }
+  return null;
+}
+function saveSearchUi(s: SavedSearchUi): void {
+  try {
+    sessionStorage.setItem(SEARCH_UI_KEY, JSON.stringify(s));
+  } catch {
+    // 配额不足时放弃还原
+  }
+}
+function clearSavedSearchUi(): void {
+  try {
+    sessionStorage.removeItem(SEARCH_UI_KEY);
+  } catch {
+    // 忽略
+  }
+}
+
 export default function HomePage() {
   return (
     <Suspense>
@@ -47,6 +83,13 @@ function HomeContent() {
   const subscriptions = useAppStore((s) => s.subscriptions);
   const [input, setInput] = useState(urlQuery);
   const [detailItem, setDetailItem] = useState<SearchResultItem | null>(null);
+  /** 进详情/播放前记住现场：返回搜索列表时还原展开数与滚动位置（仅搜索列表需要） */
+  const openDetail = (item: SearchResultItem) => {
+    if (urlQuery) {
+      saveSearchUi({ q: urlQuery, visibleCount, scrollY: typeof window === 'undefined' ? 0 : window.scrollY });
+    }
+    setDetailItem(item);
+  };
   /** 流式搜索中已结算的源（data 就绪前用于增量渲染） */
   const [streamedOutcomes, setStreamedOutcomes] = useState<SourceSearchOutcome[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -158,10 +201,54 @@ function HomeContent() {
   // 跨源同名聚合：同名影片合并为一张卡片，展开后可选择具体来源
   const groups = useMemo(() => aggregateResults(list), [list]);
 
-  // 分批渲染：新一次搜索（groups 变化）时重置回首批
-  const [visibleCount, setVisibleCount] = useState(RESULT_PAGE_SIZE);
+  // 分批渲染：只有搜索词变化才重置回首批（流式增量到达不再折叠已展开的列表）；
+  // 从观看页返回时（同词）沿用离开前记住的展开数
+  const [visibleCount, setVisibleCount] = useState(() => loadSavedSearchUi(urlQuery)?.visibleCount ?? RESULT_PAGE_SIZE);
   const visibleGroups = useMemo(() => groups.slice(0, visibleCount), [groups, visibleCount]);
-  useEffect(() => setVisibleCount(RESULT_PAGE_SIZE), [groups]);
+  const prevQueryRef = useRef(urlQuery);
+  useEffect(() => {
+    if (prevQueryRef.current !== urlQuery) {
+      prevQueryRef.current = urlQuery;
+      setVisibleCount(RESULT_PAGE_SIZE);
+    }
+  }, [urlQuery]);
+  // 返回还原滚动：等本次搜索结算（非加载中且有结果）后再滚，避免首批渲染期被钳位
+  const pendingScrollRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (pendingScrollRef.current !== null) return;
+    const saved = loadSavedSearchUi(urlQuery);
+    if (saved && saved.scrollY > 0) pendingScrollRef.current = saved.scrollY;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (pendingScrollRef.current === null) return;
+    if (!urlQuery || isSearching || groups.length === 0) return;
+    const y = pendingScrollRef.current;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        pendingScrollRef.current = null;
+        clearSavedSearchUi();
+        window.scrollTo(0, y);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [urlQuery, isSearching, groups.length]);
+  // 离开首页路由时也记一份现场（Tab 切直播、点 Logo 等）：返回时同样还原
+  const visibleCountRef = useRef(visibleCount);
+  visibleCountRef.current = visibleCount;
+  const urlQueryRef = useRef(urlQuery);
+  urlQueryRef.current = urlQuery;
+  useEffect(() => {
+    return () => {
+      const q = urlQueryRef.current;
+      if (q) saveSearchUi({ q, visibleCount: visibleCountRef.current, scrollY: window.scrollY });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -335,7 +422,7 @@ function HomeContent() {
                     <AggregatedCard
                       key={group.key}
                       group={group}
-                      onOpen={(item) => setDetailItem(item)}
+                      onOpen={openDetail}
                     />
                   ))}
                 </div>
@@ -370,7 +457,7 @@ function HomeContent() {
                 setInput(title);
                 runSearch(title);
               }}
-            onOpen={(item) => setDetailItem(item)}
+            onOpen={openDetail}
             />
         )}
       </main>

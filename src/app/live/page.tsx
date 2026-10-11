@@ -17,6 +17,7 @@ const LivePlayer = dynamic(() => import('@/components/live-player').then((m) => 
   ),
 });
 import { LiveChannelList, type LiveChannelItem } from '@/components/live-channel-list';
+import { matchesKeyword, normalizeForSearch } from '@/lib/live-channel-filter';
 import { LiveEpgPanel } from '@/components/live-epg-panel';
 import { Spinner } from '@/components/states';
 import { useAuth } from '@/components/auth';
@@ -214,6 +215,14 @@ function LiveContent() {
     );
   }
 
+  // 大厅空态：无任何可用源时只显示引导（未添加 / 全停用）
+  const hallEmptyHint =
+    sources.length === 0
+      ? liveEnvSources.length + liveSubscriptions.length > 0
+        ? '所有直播源均已停用，请在设置中勾选启用'
+        : '暂无直播源，请在设置 → 直播源中添加'
+      : null;
+
   const logo = currentChannel?.logo;
   const isFavorite = currentChannel ? liveFavorites.includes(currentChannel.url) : false;
 
@@ -222,6 +231,20 @@ function LiveContent() {
       <Header showSearch />
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-4">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+          {!currentUrl ? (
+            <ChannelHall
+              channels={channels}
+              groups={groups}
+              sources={sources}
+              loading={playlistsQuery.isLoading}
+              failedCount={failedCount}
+              emptyHint={hallEmptyHint}
+              onSelect={handleSelect}
+              imageProxyMode={imageProxyMode}
+              customImageProxy={customImageProxy}
+            />
+          ) : (
+            <>
           {/* 主栏：播放器 + 信息条 + 节目单 */}
           <div className="min-w-0">
             <div className="aspect-video bg-black rounded-lg overflow-hidden">
@@ -443,10 +466,12 @@ function LiveContent() {
               )}
             </div>
           </aside>
+            </>
+          )}
         </div>
 
         {/* 移动端呼出频道列表的悬浮按钮 */}
-        {!listOpen && channels.length > 0 && (
+        {!listOpen && channels.length > 0 && currentUrl && (
           <button
             className="fixed bottom-4 right-4 z-30 flex items-center gap-1.5 rounded-full bg-accent px-4 py-2.5 text-sm text-on-accent shadow-lg lg:hidden"
             onClick={() => setListOpen(true)}
@@ -464,5 +489,167 @@ function LiveContent() {
         )}
       </main>
     </div>
+  );
+}
+
+
+/** 无选中频道时的频道大厅：来源 / 分组 / 关键字筛选 + 台标网格，点台即播 */
+const HALL_PAGE_SIZE = 240;
+
+function ChannelHall({
+  channels,
+  groups,
+  sources,
+  loading,
+  failedCount,
+  emptyHint,
+  onSelect,
+  imageProxyMode,
+  customImageProxy,
+}: {
+  channels: LiveChannelItem[];
+  groups: string[];
+  sources: { url: string; name: string }[];
+  loading: boolean;
+  failedCount: number;
+  emptyHint: string | null;
+  onSelect: (c: LiveChannelItem) => void;
+  imageProxyMode: 'direct' | 'proxy' | 'custom';
+  customImageProxy: string;
+}) {
+  const [keyword, setKeyword] = useState('');
+  const [group, setGroup] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [limit, setLimit] = useState(HALL_PAGE_SIZE);
+  const [logoFailed, setLogoFailed] = useState<Record<string, boolean>>({});
+
+  const sourceName = (url?: string) => sources.find((s) => s.url === url)?.name || '';
+
+  const filtered = useMemo(() => {
+    const kw = normalizeForSearch(keyword.trim());
+    return channels.filter(
+      (c) =>
+        (!sourceUrl || c.sourceUrl === sourceUrl) &&
+        (!group || c.group === group) &&
+        (!kw || matchesKeyword(c, kw))
+    );
+  }, [channels, sourceUrl, group, keyword]);
+
+  useEffect(() => {
+    setLimit(HALL_PAGE_SIZE);
+  }, [keyword, group, sourceUrl, channels]);
+
+  if (emptyHint) {
+    return (
+      <section aria-label="全部频道" className="card p-10 text-center">
+        <h2 className="text-base font-semibold text-content mb-2">全部频道</h2>
+        <p className="text-sm text-faint">{emptyHint}</p>
+      </section>
+    );
+  }
+
+  const visible = filtered.slice(0, limit);
+  const chip = (active: boolean) =>
+    cn(
+      'px-2.5 py-1 rounded-full text-xs transition-colors',
+      active ? 'bg-accent text-on-accent' : 'bg-chip text-muted hover:text-content hover:bg-hover'
+    );
+
+  return (
+    <section aria-label="全部频道">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <h2 className="text-base font-semibold text-content">全部频道</h2>
+        <span className="text-xs text-faint">{filtered.length} 个</span>
+        {loading && channels.length > 0 && <span className="text-xs text-faint">加载中…</span>}
+        <div className="ml-auto w-full sm:w-56">
+          <input
+            className="input w-full !py-1.5 text-xs"
+            aria-label="搜索频道"
+            placeholder="搜索频道…"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {sources.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 mb-2.5" aria-label="按来源筛选">
+          <button className={chip(!sourceUrl)} onClick={() => setSourceUrl('')}>
+            全部来源
+          </button>
+          {sources.map((s) => (
+            <button key={s.url} className={chip(sourceUrl === s.url)} onClick={() => setSourceUrl(s.url)}>
+              {s.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {groups.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4" aria-label="按分组筛选">
+          <button className={chip(!group)} onClick={() => setGroup('')}>
+            全部分组
+          </button>
+          {groups.map((g) => (
+            <button key={g} className={chip(group === g)} onClick={() => setGroup(g)}>
+              {g}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loading && channels.length === 0 ? (
+        <div className="flex items-center justify-center py-16">
+          <Spinner size="lg" />
+        </div>
+      ) : visible.length === 0 ? (
+        <p className="text-center text-sm text-faint py-16">没有匹配的频道，换个关键词或分组试试</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2.5">
+            {visible.map((c) => (
+              <button
+                key={c.url}
+                onClick={() => onSelect(c)}
+                title={c.name}
+                className="card p-3 flex flex-col items-center gap-2 hover:border-accent transition-colors text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
+                <span className="h-12 w-full flex items-center justify-center">
+                  {c.logo && !logoFailed[c.url] ? (
+                    <SmartImage
+                      url={c.logo}
+                      mode={imageProxyMode}
+                      customProxy={customImageProxy}
+                      alt={c.name}
+                      className="max-h-12 w-auto max-w-full object-contain"
+                      onExhausted={() => setLogoFailed((m) => ({ ...m, [c.url]: true }))}
+                    />
+                  ) : (
+                    <span className="text-lg font-semibold text-accent">{c.name.slice(0, 2)}</span>
+                  )}
+                </span>
+                <span className="w-full">
+                  <span className="block text-xs font-medium text-content truncate">{c.name}</span>
+                  <span className="block text-[11px] text-faint truncate mt-0.5">
+                    {[c.group, sourceName(c.sourceUrl)].filter(Boolean).join(String.fromCharCode(183))}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+          {filtered.length > limit && (
+            <div className="flex justify-center mt-4">
+              <button className="btn-ghost btn-sm" onClick={() => setLimit((v) => v + HALL_PAGE_SIZE)}>
+                加载更多（还有 {filtered.length - limit} 个）
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      {failedCount > 0 && (
+        <p className="text-xs text-faint mt-3">{failedCount} 个订阅拉取失败，部分频道可能缺失</p>
+      )}
+    </section>
   );
 }

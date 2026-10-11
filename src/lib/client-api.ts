@@ -1,6 +1,6 @@
 'use client';
 
-import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, SourceListPayload } from './types';
+import type { SearchResponse, SearchStreamEvent, SourceSearchOutcome, VideoDetail, DoubanResponse, BangumiCalendarResponse, AuthStatusResponse, SourceConfig, SearchResultItem, LivePlaylistResponse, LiveEpgResponse, SourceListPayload, CategoriesResponse, VodListResponse, VodListAggregateResponse } from './types';
 
 /**
  * 客户端 API 封装。401 时触发全局事件打开登录框，
@@ -153,6 +153,46 @@ export const api = {
       signal,
     }),
 
+  /**
+   * 全源分类：批量拉取各源 ac=list 并服务端归一（24h 缓存，每日一次）。
+   * 调用方按 browseMode 取用 sources（单源）或 merged（聚合）。
+   */
+  categories: (sources: SourceConfig[], signal?: AbortSignal) =>
+    request<CategoriesResponse>('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sources }),
+      signal,
+    }),
+
+  /** 单源分类翻页：某源某 type_id 的第 page 页（10 分钟缓存） */
+  vodListSingle: (
+    source: SourceConfig,
+    typeId: number,
+    page: number,
+    filterAdult: boolean,
+    signal?: AbortSignal
+  ) =>
+    request<VodListResponse>('/api/vod-list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'single', source, typeId, page, filterAdult }),
+      signal,
+    }),
+
+  /** 聚合分类翻页：多源多 typeId 并行合并去重（10 分钟缓存） */
+  vodListAggregate: (
+    targets: { source: SourceConfig; typeIds: number[] }[],
+    page: number,
+    filterAdult: boolean,
+    signal?: AbortSignal
+  ) =>
+    request<VodListAggregateResponse>('/api/vod-list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'aggregate', targets, page, filterAdult }),
+      signal,
+    }),
   detail: (id: string, source: SourceConfig, signal?: AbortSignal) => {
     const sp = new URLSearchParams({ id, source: JSON.stringify(source) });
     return request<VideoDetail>(`/api/detail?${sp.toString()}`, { signal });

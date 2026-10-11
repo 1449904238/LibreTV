@@ -725,8 +725,49 @@ function HomePanel() {
             { value: 'hot-list', label: '影视榜单', hint: '豆瓣周榜 / 百度热播' },
           ]}
         />
+        <SelectRow
+          label="首页浏览模式"
+          value={store.browseMode}
+          onChange={(v) => store.updateSettings({ browseMode: v as 'single' | 'aggregate' | 'recommend' })}
+          options={[
+            { value: 'single', label: '单源分类', hint: '默认源的真实分类' },
+            { value: 'aggregate', label: '聚合分类', hint: '全源分类归一合并' },
+            { value: 'recommend', label: '推荐榜单', hint: '现有推荐内容不变' },
+          ]}
+          description="首页分类浏览的展示方式，可在首页顶部随时切换"
+        />
+        <BrowseDefaultSourceRow />
       </div>
     </section>
+  );
+}
+
+/** 单源分类模式的默认源（首页切换即同步到这里） */
+function BrowseDefaultSourceRow() {
+  const store = useAppStore();
+  const options = useMemo(() => {
+    const seen = new Set<string>();
+    return store.selectedKeys
+      .map((key) => resolveSource(store, key))
+      .filter((s): s is SourceConfig => {
+        if (!s || !validateSourceUrl(s.url) || seen.has(s.key)) return false;
+        seen.add(s.key);
+        return true;
+      })
+      .map((s) => ({ value: s.key, label: s.name, hint: s.url }));
+  }, [store]);
+  if (options.length === 0) return null;
+  const value = options.some((o) => o.value === store.defaultBrowseSourceKey)
+    ? (store.defaultBrowseSourceKey as string)
+    : options[0].value;
+  return (
+    <SelectRow
+      label="默认分类源"
+      value={value}
+      onChange={(v) => store.updateSettings({ defaultBrowseSourceKey: v })}
+      options={options}
+      description="单源分类模式下首页展示该源的分类"
+    />
   );
 }
 
