@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ThemeToggle } from './theme';
 import { SourceManagerDrawer } from './source-manager';
 import { HistoryPanel } from './history-panel';
 import { requestShowDownloadManager } from './download-manager';
-import { Icon } from './icon';
+import { Icon, type IconName } from './icon';
 import { SearchHistoryDropdown, useSearchHistory } from './search-history';
 import { MediaTabs } from './media-tabs';
 import { cn } from '@/lib/utils';
@@ -16,9 +16,18 @@ import { useAuth } from './auth';
 /** 顶部导航：Logo、搜索框（首页外）、历史、设置 */
 export function Header({ showSearch = false }: { showSearch?: boolean }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // 移动端菜单：Esc 关闭
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
   const [query, setQuery] = useState('');
   // 与首页搜索框共用同一套「最近搜索」下拉逻辑
   const searchHistory = useSearchHistory(query);
@@ -101,29 +110,51 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
 
           <nav className="flex items-center gap-1 ml-auto">
             <MediaTabs />
-            <HeaderLink href="/about" active={pathname === '/about'}>
-              关于
-            </HeaderLink>
             <ThemeToggle />
-            <IconButton label="观看历史" onClick={() => setHistoryOpen(true)}>
-              <Icon name="clock" />
-            </IconButton>
-            <IconButton label="下载管理" onClick={requestShowDownloadManager}>
-              <Icon name="download" />
-            </IconButton>
-            <IconButton label="设置" onClick={() => setSettingsOpen(true)}>
-              <Icon name="gear" />
-            </IconButton>
+            <div className="hidden sm:flex items-center gap-1">
+              <IconButton label="观看历史" onClick={() => setHistoryOpen(true)}>
+                <Icon name="clock" />
+              </IconButton>
+              <IconButton label="下载管理" onClick={() => requestShowDownloadManager()}>
+                <Icon name="download" />
+              </IconButton>
+              <IconButton label="设置" onClick={() => setSettingsOpen(true)}>
+                <Icon name="gear" />
+              </IconButton>
+              {verified && (
+                <IconButton label="退出登录" onClick={() => logout()}>
+                  <Icon name="logout" />
+                </IconButton>
+              )}
+            </div>
             {!verified && (
-              <button className="ml-1 px-3 py-1.5 rounded-md text-sm bg-accent text-on-accent transition-colors hover:opacity-90" onClick={() => openLogin()}>
+              <button className="ml-1 shrink-0 whitespace-nowrap px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm bg-accent text-on-accent transition-colors hover:opacity-90" onClick={() => openLogin()}>
                 登录
               </button>
             )}
-            {verified && (
-              <IconButton label="退出登录" onClick={() => logout()}>
-                <Icon name="logout" />
+            <div className="relative sm:hidden">
+              <IconButton label="更多操作" onClick={() => setMenuOpen((v) => !v)}>
+                <Icon name="menu" />
               </IconButton>
-            )}
+              {menuOpen && (
+                <>
+                  <button
+                    aria-hidden
+                    tabIndex={-1}
+                    className="fixed inset-0 z-30 cursor-default bg-transparent"
+                    onClick={() => setMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full z-40 mt-2 w-44 card p-1.5" role="menu" aria-label="更多操作">
+                    <MenuRow icon="clock" label="观看历史" onClick={() => { setMenuOpen(false); setHistoryOpen(true); }} />
+                    <MenuRow icon="download" label="下载管理" onClick={() => { setMenuOpen(false); requestShowDownloadManager(); }} />
+                    <MenuRow icon="gear" label="设置" onClick={() => { setMenuOpen(false); setSettingsOpen(true); }} />
+                    {verified && (
+                      <MenuRow icon="logout" label="退出登录" onClick={() => { setMenuOpen(false); logout(); }} />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           </nav>
         </div>
       </header>
@@ -134,17 +165,39 @@ export function Header({ showSearch = false }: { showSearch?: boolean }) {
   );
 }
 
-function HeaderLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+
+/** 移动端下拉菜单行：链接或按钮统一样式 */
+function MenuRow({
+  icon,
+  label,
+  onClick,
+  href,
+  onNavigate,
+}: {
+  icon: IconName;
+  label: string;
+  onClick?: () => void;
+  href?: string;
+  onNavigate?: () => void;
+}) {
+  const inner = (
+    <>
+      <Icon name={icon} className="w-4 h-4 shrink-0" />
+      <span className="text-sm">{label}</span>
+    </>
+  );
+  const cls = 'w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-muted hover:text-content hover:bg-hover transition-colors text-left';
+  if (href) {
+    return (
+      <Link href={href} className={cls} role="menuitem" onClick={onNavigate}>
+        {inner}
+      </Link>
+    );
+  }
   return (
-    <Link
-      href={href}
-      className={cn(
-        'px-2.5 py-1.5 rounded-md text-sm transition-colors',
-        active ? 'text-content bg-hover' : 'text-muted hover:text-content'
-      )}
-    >
-      {children}
-    </Link>
+    <button className={cls} role="menuitem" onClick={onClick}>
+      {inner}
+    </button>
   );
 }
 

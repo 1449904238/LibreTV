@@ -402,7 +402,7 @@ function LiveContent() {
             )}
 
             {/* 节目单 */}
-            {currentChannel && (
+            {currentChannel && currentChannel.epg && (
               <section className="bg-surface-raised border border-line rounded-lg p-3 mt-3">
                 <h2 className="text-sm font-semibold text-content mb-2.5">节目单</h2>
                 <LiveEpgPanel epgUrl={currentChannel.epg} tvgId={currentChannel.tvgId} />

@@ -218,6 +218,7 @@ function HomeContent() {
     if (pendingScrollRef.current !== null) return;
     const saved = loadSavedSearchUi(urlQuery);
     if (saved && saved.scrollY > 0) pendingScrollRef.current = saved.scrollY;
+    // 挂载认领一次即可：后续同词搜索不再重复认领（pending 非空即返回）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
@@ -247,7 +248,6 @@ function HomeContent() {
       const q = urlQueryRef.current;
       if (q) saveSearchUi({ q, visibleCount: visibleCountRef.current, scrollY: window.scrollY });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

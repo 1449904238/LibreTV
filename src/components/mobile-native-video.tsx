@@ -43,6 +43,8 @@ export function MobileNativeVideo({
 }: MobileNativeVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState("");
+  // 非阻塞弱提示（如 H.265 预警），3.5s 自动消失，不遮挡播放
+  const [hint, setHint] = useState("");
   const [showPoster, setShowPoster] = useState(true);
   const cbs = useRef({ getRestorePosition, onTimeUpdate, onEnded, onPause, onRequestSwitchSource });
   cbs.current = { getRestorePosition, onTimeUpdate, onEnded, onPause, onRequestSwitchSource };
@@ -54,6 +56,8 @@ export function MobileNativeVideo({
     setShowPoster(true);
 
     let hls: Hls | null = null;
+    // 清单解析成功标记：网络已通，后续致命 MEDIA_ERROR 大概率是设备解码问题（如 H.265）
+    let manifestOk = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let flvPlayer: any = null;
     let disposed = false;
@@ -105,7 +109,7 @@ export function MobileNativeVideo({
           playNativeDirect(proxyBase + encodeURIComponent(url), false, failMessage);
           return;
         }
-        fail(failMessage || "视频加载失败，请尝试其他资源", "原生播放失败");
+      fail(failMessage || (live ? "直播流加载失败，当前设备可能不支持此视频格式，请尝试其他频道" : "视频加载失败，请尝试其他资源"), "原生播放失败");
       };
       video.addEventListener("error", onDirectError);
       video.src = mediaUrl;
@@ -129,6 +133,10 @@ export function MobileNativeVideo({
       } catch { /* canPlayType 不可用则走 hls.js */ }
 
       if (!Hls.isSupported()) {
+        if (!NATIVE_MEDIA_RE.test(url)) {
+          fail(live ? "当前浏览器不支持 HLS 直播播放，请换 Chrome / Safari 试试" : "当前浏览器不支持 HLS 播放，请换 Chrome / Safari 试试");
+          return;
+        }
         playNativeDirect(mediaUrl, allowProxyFallback);
         return;
       }
@@ -166,7 +174,18 @@ export function MobileNativeVideo({
       hls = inst;
       inst.loadSource(mediaUrl);
       inst.attachMedia(video);
-      inst.on(Hls.Events.MANIFEST_PARSED, () => {
+      inst.on(Hls.Events.MANIFEST_PARSED, (_evt, manifestData) => {
+        manifestOk = true;
+        try {
+          const codecs = (manifestData.levels || []).map((l) => l.videoCodec || "").join(",");
+          if (/hvc1|hev1|hevc/i.test(codecs)) {
+            const support = video.canPlayType('video/mp4; codecs="hvc1.1.6.L93.B0"');
+            if (!support) {
+              setHint("该频道为 H.265 编码，当前设备可能无法解码");
+              setTimeout(() => { if (!disposed) setHint(""); }, 3500);
+            }
+          }
+        } catch { /* 忽略检测失败 */ }
         if (!disposed) tryPlay();
       });
       inst.on(Hls.Events.ERROR, (_evt, data) => {
@@ -189,7 +208,9 @@ export function MobileNativeVideo({
           return;
         }
         fail(
-          live ? "直播流加载失败，请尝试其他频道" : "视频加载失败，请尝试其他视频源",
+          manifestOk
+            ? (live ? "当前设备可能无法解码该直播格式，换个频道试试" : "当前设备可能无法解码该视频格式，换个视频源试试")
+            : (live ? "直播流加载失败，请尝试其他频道" : "视频加载失败，请尝试其他视频源"),
           `移动端播放失败(${data.details || data.type})`
         );
       });
@@ -332,6 +353,11 @@ export function MobileNativeVideo({
             backgroundRepeat: "no-repeat",
           }}
         />
+      )}
+      {hint && !error && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 rounded bg-black/70 px-2.5 py-1 text-[11px] text-warning pointer-events-none whitespace-nowrap max-w-[90%] truncate">
+          {hint}
+        </div>
       )}
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80">

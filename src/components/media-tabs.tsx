@@ -37,7 +37,6 @@ export function MediaTabs() {
   const pathname = usePathname();
   const router = useRouter();
   const isLive = pathname.startsWith('/live');
-  const isAbout = pathname.startsWith('/about');
 
   const goVod = () => {
     const cur = currentUrl();
@@ -48,7 +47,7 @@ export function MediaTabs() {
 
   const goLive = () => {
     const cur = currentUrl();
-    if (!cur.startsWith('/live') && !cur.startsWith('/about')) saveKey(LAST_VOD_KEY, cur);
+    if (!cur.startsWith('/live')) saveKey(LAST_VOD_KEY, cur);
     if (cur.startsWith('/live')) {
       if (!window.location.search) return;
       router.push('/live');
@@ -59,13 +58,13 @@ export function MediaTabs() {
 
   const tabClass = (active: boolean) =>
     cn(
-      'px-3 py-1.5 rounded-md text-sm transition-colors',
+      'whitespace-nowrap px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm transition-colors',
       active ? 'bg-accent text-on-accent' : 'text-muted hover:text-content'
     );
 
   return (
     <div className="flex bg-chip rounded-lg p-0.5" role="tablist" aria-label="点播直播切换">
-      <button role="tab" aria-selected={!isLive && !isAbout} className={tabClass(!isLive && !isAbout)} onClick={goVod}>
+      <button role="tab" aria-selected={!isLive} className={tabClass(!isLive)} onClick={goVod}>
         点播
       </button>
       <button role="tab" aria-selected={isLive} className={tabClass(isLive)} onClick={goLive}>

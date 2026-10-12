@@ -14,7 +14,6 @@ import {
 } from '@/lib/browse-categories';
 import { RecommendSection } from './douban-section';
 import { SmartImage } from './smart-image';
-import { aggregateResults, AggregatedCard } from './video-card';
 
 /**
  * 首页浏览区：三种模式可切换（选择即持久化）。
@@ -365,7 +364,6 @@ function AggregateBrowser({ onOpen }: { onOpen: (item: SearchResultItem) => void
     setAccum([]);
   };
 
-  const groups = useMemo(() => aggregateResults(accum), [accum]);
   if (sources.length === 0) {
     return <p className="text-center text-sm text-faint py-8">暂无可用点播源：请先登录并在设置中添加或勾选点播源</p>;
   }
@@ -434,9 +432,9 @@ function AggregateBrowser({ onOpen }: { onOpen: (item: SearchResultItem) => void
         <p className="text-center text-sm text-faint py-8">该分类暂无内容</p>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-start">
-            {groups.map((g) => (
-              <AggregatedCard key={g.key} group={g} onOpen={onOpen} />
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
+            {accum.map((item) => (
+              <VodPosterCard key={`${item.sourceKey}:${item.vodId}`} item={item} onClick={() => onOpen(item)} showSource />
             ))}
           </div>
           <div className="flex items-center justify-center gap-3 mt-4">
@@ -454,10 +452,13 @@ function AggregateBrowser({ onOpen }: { onOpen: (item: SearchResultItem) => void
 }
 
 /** 竖式海报卡（单源列表用，点击直接进详情） */
-function VodPosterCard({ item, onClick }: { item: SearchResultItem; onClick: () => void }) {
+function VodPosterCard({ item, onClick, showSource }: { item: SearchResultItem; onClick: () => void; showSource?: boolean }) {
   const imageProxyMode = useAppStore((s) => s.imageProxyMode);
   const customImageProxy = useAppStore((s) => s.customImageProxy);
   const [imgFailed, setImgFailed] = useState(false);
+  const sub = showSource
+    ? [item.typeName, item.sourceName].filter(Boolean).join(String.fromCharCode(183))
+    : (item.typeName ?? item.sourceName);
   useEffect(() => setImgFailed(false), [item.pic]);
 
   return (
@@ -500,8 +501,8 @@ function VodPosterCard({ item, onClick }: { item: SearchResultItem; onClick: () 
         <div className="text-xs font-medium text-content truncate" title={item.name}>
           {item.name}
         </div>
-        <div className="text-[11px] text-faint truncate mt-0.5" title={item.typeName ?? item.sourceName}>
-          {item.typeName ?? item.sourceName}
+        <div className="text-[11px] text-faint truncate mt-0.5" title={sub}>
+          {sub}
         </div>
       </div>
     </div>
