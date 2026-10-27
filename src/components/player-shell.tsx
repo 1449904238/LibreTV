@@ -171,19 +171,9 @@ export function PlayerShell({
       // （Safari 系），而 ensure 是以「锚点未变」为前提复用 parsing 中的运行的——
       // 这里读到旧值会把窗口建在片头，且白等一次纠错重建。
       let prefetchAnchor = video.currentTime;
-      // 进度恢复（每集一次）：优先 URL position，其次 IndexedDB 记录
-      if (!restoredRef.current) {
-        restoredRef.current = true;
-        try {
-          const saved = (await propsRef.current.getRestorePosition?.()) ?? 0;
-          const duration = artRef.current?.duration || 0;
-          if (saved > 10 && duration > 0 && saved < duration - 2) {
-            if (artRef.current) artRef.current.currentTime = saved;
-            prefetchAnchor = saved;
-            showHint(`已从 ${formatTime(saved)} 继续播放`);
-          }
-        } catch { /* 忽略恢复失败 */ }
-      }
+      // 进度恢复：此时时长可能未就绪（返回 null），loadedmetadata/playing 会重试
+      const anchor = await tryRestorePlayback().catch(() => null);
+      if (anchor !== null && anchor > 0) prefetchAnchor = anchor;
       // 新集立即预取（否则要等 timeupdate 的 30s 节流，起播初期无缓存）
       ensurePrefetch(mediaUrl, prefetchAnchor);
       video.play().catch(() => {});
@@ -212,6 +202,7 @@ export function PlayerShell({
             (decision.attempt >= 2 || data.details === 'manifestLoadError')
           ) {
             showHint('直连失败，改用代理重试...');
+            restoredRef.current = false; // 重建后从头加载，恢复位置需重做
             setupHls(video, `/api/proxy?url=${encodeURIComponent(mediaUrl)}`, false);
             return;
           }
@@ -257,6 +248,35 @@ export function PlayerShell({
     const art = artRef.current;
     if (!art) return;
     setupHls(art.video, targetUrl, true);
+  };
+
+  /**
+   * 进度恢复（每集一次）：优先 URL position，其次 IndexedDB/历史记录。
+   * MANIFEST_PARSED 时 video 元数据可能尚未加载、duration 取不到，
+   * 此时返回 null 且不标记，loadedmetadata/playing 事件会继续重试；
+   * 只有真正完成（或确认无需恢复）才标记 restoredRef，避免一次失败就永久跳过。
+   */
+  const tryRestorePlayback = async (): Promise<number | null> => {
+    if (restoredRef.current) {
+      const cur = artRef.current?.currentTime || 0;
+      return cur > 0 ? cur : null;
+    }
+    let saved = 0;
+    try {
+      saved = (await propsRef.current.getRestorePosition?.()) ?? 0;
+    } catch { /* 忽略恢复失败 */ }
+    const duration = artRef.current?.duration || 0;
+    // 时长未知（元数据未加载）：不标记，留给后续事件重试
+    if (!(duration > 0)) return null;
+    restoredRef.current = true;
+    if (saved > 10 && saved < duration - 2) {
+      try {
+        if (artRef.current) artRef.current.currentTime = saved;
+      } catch { /* 忽略 seek 失败 */ }
+      showHint(`已从 ${formatTime(saved)} 继续播放`);
+      return saved;
+    }
+    return null;
   };
 
   // —— 创建播放器（仅一次，挂载即创建） ——
@@ -306,6 +326,8 @@ export function PlayerShell({
     });
     artRef.current = art;
     art.on('video:loadedmetadata', () => {
+      // 元数据就绪（duration 可用）：之前跳过的恢复在这里重试
+      void tryRestorePlayback();
       // ArtPlayer 运行时支持 title 选项（类型定义未覆盖），用于界面标题展示
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -327,6 +349,7 @@ export function PlayerShell({
       if (!playbackStartedRef.current && !videoErrorRetryUsedRef.current) {
         videoErrorRetryUsedRef.current = true;
         showHint('播放异常，正在重试...');
+        restoredRef.current = false; // 重建后恢复位置需重做
         setupHls(art.video, currentMediaUrlRef.current, true);
         return;
       }
@@ -361,6 +384,8 @@ export function PlayerShell({
       getVideoPrefetcher().setThrottled(true);
     });
     art.on('video:playing', () => {
+      // 开播兜底重试：前面都没恢复上，这里是最后机会（已恢复则是空操作）
+      void tryRestorePlayback();
       getVideoPrefetcher().setThrottled(false);
     });
     art.on('video:ended', () => {

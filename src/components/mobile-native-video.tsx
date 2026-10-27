@@ -81,11 +81,13 @@ export function MobileNativeVideo({
 
     const restorePosition = async () => {
       if (restored || live) return;
-      restored = true;
       try {
         const saved = (await cbs.current.getRestorePosition?.()) ?? 0;
         const duration = video.duration || 0;
-        if (saved > 10 && duration > 0 && saved < duration - 2) {
+        // 时长未知时不标记：留给 playing 事件重试
+        if (!(duration > 0)) return;
+        restored = true;
+        if (saved > 10 && saved < duration - 2) {
           video.currentTime = saved;
         }
       } catch { /* 忽略 */ }
@@ -265,6 +267,8 @@ export function MobileNativeVideo({
       void restorePosition();
     };
     const onPlaying = () => {
+      // 开播兜底重试：loadedmetadata 时时长未知的恢复在这里补上（已恢复则是空操作）
+      void restorePosition();
       setShowPoster(false);
       setError("");
     };

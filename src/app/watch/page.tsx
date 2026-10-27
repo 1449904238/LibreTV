@@ -100,13 +100,29 @@ function WatchContent() {
     [router, searchParams, episodes, directUrl]
   );
 
-  // 进度恢复优先级：URL position 参数 > IndexedDB 记录
+  // 进度恢复优先级：URL position 参数 > 分集进度表 > 历史记录的上次位置
   const getRestorePosition = useCallback(async () => {
     const urlPos = parseInt(searchParams.get('position') || '0', 10) || 0;
     if (urlPos > 0) return urlPos;
     if (!vodId) return 0;
     const entry = await db.progress.get(progressKeyOf(sourceKey, vodId, currentIndex));
-    return entry?.position ?? 0;
+    if (entry?.position) return entry.position;
+    // 老记录或分集进度缺失时：用历史里该集的上次位置兜底
+    try {
+      const h = await db.history.get(`${sourceKey}_${vodId}`);
+      if (
+        h &&
+        h.episodeIndex === currentIndex &&
+        h.playbackPosition > 10 &&
+        h.duration > 0 &&
+        h.playbackPosition < h.duration - 2
+      ) {
+        return h.playbackPosition;
+      }
+    } catch {
+      // 忽略读取失败，按无进度处理
+    }
+    return 0;
   }, [searchParams, sourceKey, vodId, currentIndex]);
 
   // 写入观看历史（进入页面即记录，进度后续增量更新）
@@ -400,3 +416,5 @@ function HomeButton() {
     </Link>
   );
 }
+
+

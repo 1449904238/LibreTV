@@ -156,6 +156,8 @@ function HistoryItem({ item }: { item: HistoryEntry }) {
     title: item.title,
     sourceUrl: source?.url,
     detail: source?.detail,
+    // 历史自带的上次位置：随链接带上，无 progress 记录时也能继续播放
+    position: hasPercent ? item.playbackPosition : undefined,
   });
 
   const remove = () => {
@@ -214,7 +216,7 @@ function HistoryItem({ item }: { item: HistoryEntry }) {
             <div className="text-sm font-medium text-content truncate">{item.title}</div>
             <div className="text-xs text-faint mt-0.5 flex items-center gap-1.5 flex-wrap">
               {item.totalEpisodes > 0 && <span>第 {item.episodeIndex + 1}/{item.totalEpisodes} 集</span>}
-              {hasPercent && <span>· {formatTime(item.playbackPosition)}</span>}
+              {hasPercent && <span>· 上次看到 {formatTime(item.playbackPosition)}</span>}
               <span>· {formatRelativeTime(item.timestamp)}</span>
             </div>
             {hasPercent && (
@@ -241,3 +243,4 @@ function HistoryItem({ item }: { item: HistoryEntry }) {
     </li>
   );
 }
+
