@@ -204,8 +204,6 @@ export interface SourceListPayload {
   stats?: SubscriptionParseStats;
 }
 
-/** 首页浏览模式：单源分类 / 聚合分类 / 推荐榜单（现有豆瓣-Bangumi-热榜） */
-export type BrowseMode = 'single' | 'aggregate' | 'recommend';
 
 /** 苹果CMS分类（ac=list 的 class 条目） */
 export interface VodCategory {

@@ -6,12 +6,7 @@ import { api } from '@/lib/client-api';
 import { resolveSource, useAppStore } from '@/lib/store';
 import { cn, validateSourceUrl } from '@/lib/utils';
 import type { SearchResultItem, SourceConfig } from '@/lib/types';
-import { isAdultContent } from '@/lib/cms-parser';
-import {
-  BROWSE_CATEGORY_LIMIT,
-  filterAdultCategories,
-  sliceCategories,
-} from '@/lib/browse-categories';
+import { TAXONOMY, filterDomesticItems, matchSourceCategory } from '@/lib/browse-taxonomy';
 import { RecommendSection } from './douban-section';
 import { SmartImage } from './smart-image';
 
@@ -24,56 +19,15 @@ import { SmartImage } from './smart-image';
  * 满足"每日缓存一次"；列表走 10 分钟缓存，翻页即时可用。
  */
 
-const MODE_TABS = [
-  { id: 'single', label: '单源分类' },
-  { id: 'aggregate', label: '聚合分类' },
-  { id: 'recommend', label: '推荐榜单' },
-] as const;
-
-type ModeId = (typeof MODE_TABS)[number]['id'];
-
-export function BrowseSection({
-  onPick,
-  onOpen,
-}: {
-  onPick: (title: string) => void;
-  onOpen: (item: SearchResultItem) => void;
-}) {
-  const browseMode = useAppStore((s) => s.browseMode);
-  const updateSettings = useAppStore((s) => s.updateSettings);
-
-  return (
-    <section aria-label="分类浏览">
-      <div className="flex flex-wrap items-center gap-1.5 mb-4">
-        <div className="flex bg-chip rounded-lg p-0.5" role="tablist" aria-label="浏览模式">
-          {MODE_TABS.map((m) => (
-            <button
-              key={m.id}
-              role="tab"
-              aria-selected={browseMode === m.id}
-              className={cn(
-                'px-3.5 py-1.5 rounded-md text-sm transition-colors',
-                browseMode === m.id ? 'bg-accent text-on-accent' : 'text-muted hover:text-content'
-              )}
-              onClick={() => updateSettings({ browseMode: m.id as ModeId })}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {browseMode === 'single' ? (
-        <SingleSourceBrowser onOpen={onOpen} />
-      ) : browseMode === 'aggregate' ? (
-        <AggregateBrowser onOpen={onOpen} />
-      ) : (
-        <RecommendSection onPick={onPick} onOpen={onOpen} />
-      )}
-    </section>
-  );
-}
-
+/**
+ * 首页分类浏览（TV 端展示方案）：
+ * 一级：最近最火 / 电影 / 剧集 / 综艺 / 动漫 / 短剧 / 纪录片 / 海外专区 / 推荐榜单；
+ * 电影 / 剧集 / 海外专区带二级（动作/武打、国产剧、欧美影视……）。
+ * 数据走聚合：类目按关键词映射各源 ac/list 的 type_id（服务端 24h 缓存），
+ * 列表走 /api/vod-list（10 分钟缓存）；最近最火走 /api/latest 并按更新时间排序。
+ * 国内节点自动过滤海外条目；海外内容统一归入海外专区。
+ * 首页启动默认落在最近最火并自动加载。
+ */
 /** 已勾选且地址合法的源（分类与列表只查这些源） */
 function useAvailableSources(): SourceConfig[] {
   const customAPIs = useAppStore((s) => s.customAPIs);
@@ -103,274 +57,161 @@ function useCategoriesQuery(sources: SourceConfig[], enabled: boolean) {
   return { query, hash };
 }
 
-/** 单源模式：首页切换默认源 → 分类即该源分类 */
-function SingleSourceBrowser({ onOpen }: { onOpen: (item: SearchResultItem) => void }) {
-  const sources = useAvailableSources();
-  const defaultKey = useAppStore((s) => s.defaultBrowseSourceKey);
-  const updateSettings = useAppStore((s) => s.updateSettings);
-  const yellowFilter = useAppStore((s) => s.yellowFilter);
-  const queryClient = useQueryClient();
+const PRIMARY_TABS: { key: string; label: string }[] = [
+  ...TAXONOMY.map((p) => ({ key: p.key, label: p.label })),
+  { key: 'recommend', label: '推荐榜单' },
+];
 
-  const activeSource = useMemo(() => {
-    if (sources.length === 0) return null;
-    return sources.find((s) => s.key === defaultKey) ?? sources[0];
-  }, [sources, defaultKey]);
-
-  const { query } = useCategoriesQuery(sources, true);
-  const [catExpanded, setCatExpanded] = useState(false);
-  const [typeId, setTypeId] = useState<number | null>(null);
+export function BrowseSection({
+  onPick,
+  onOpen,
+}: {
+  onPick: (title: string) => void;
+  onOpen: (item: SearchResultItem) => void;
+}) {
+  const [primary, setPrimary] = useState('hot');
+  const [secondary, setSecondary] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [accum, setAccum] = useState<SearchResultItem[]>([]);
-  const [pagecount, setPagecount] = useState(1);
-
-  const rawCats = useMemo(() => {
-    if (!query.data || !activeSource) return [];
-    const entry = query.data.sources.find((s) => s.sourceKey === activeSource.key);
-    return entry?.categories ?? [];
-  }, [query.data, activeSource]);
-  const cats = useMemo(() => filterAdultCategories(rawCats, yellowFilter), [rawCats, yellowFilter]);
-  const { visible: visibleCats, collapsed } = sliceCategories(cats, catExpanded);
-
-  // 源或分类就绪时默认选中第一个分类；源切换时收起折叠并重置列表
-  useEffect(() => {
-    setCatExpanded(false);
-    setPage(1);
-    setAccum([]);
-    setTypeId(null);
-  }, [activeSource?.key]);
-  useEffect(() => {
-    if (cats.length === 0) {
-      if (typeId !== null) {
-        setTypeId(null);
-        setPage(1);
-        setAccum([]);
-      }
-      return;
-    }
-    if (typeId === null || !cats.some((c) => c.id === typeId)) {
-      setTypeId(cats[0].id);
-      setPage(1);
-      setAccum([]);
-      setPagecount(1);
-    }
-  }, [cats, typeId]);
-
-
-  const listQuery = useQuery({
-    queryKey: ['vod-list-single', activeSource?.key, typeId, page, yellowFilter],
-    queryFn: ({ signal }) =>
-      api.vodListSingle(activeSource as SourceConfig, typeId as number, page, yellowFilter, signal),
-    enabled: !!activeSource && typeId !== null,
-    staleTime: 10 * 60 * 1000,
-  });
-  useEffect(() => {
-    if (!listQuery.data) return;
-    const rows = listQuery.data.list;
-    setPagecount(listQuery.data.pagecount);
-    setAccum((prev) => (page === 1 ? rows : [...prev, ...rows]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listQuery.data]);
-
-  const switchSource = (key: string) => {
-    if (key === activeSource?.key) return;
-    updateSettings({ defaultBrowseSourceKey: key });
-  };
-  const switchCat = (id: number) => {
-    if (id === typeId) return;
-    setTypeId(id);
-    setPagecount(1);
-    setPage(1);
-    setAccum([]);
-  };
-
-  if (sources.length === 0) {
-    return <p className="text-center text-sm text-faint py-8">暂无可用点播源：请先登录并在设置中添加或勾选点播源</p>;
-  }
-
-  return (
-    <div>
-      {/* 默认源切换 */}
-      <div className="flex flex-wrap gap-1.5 mb-3" aria-label="默认源">
-        {sources.map((s) => (
-          <button
-            key={s.key}
-            className={cn(
-              'px-2.5 py-1 rounded-full text-xs transition-colors',
-              s.key === activeSource?.key
-                ? 'bg-accent text-on-accent'
-                : 'bg-chip text-muted hover:text-content hover:bg-hover'
-            )}
-            onClick={() => switchSource(s.key)}
-          >
-            {s.name}
-          </button>
-        ))}
-      </div>
-
-      {/* 该源分类：默认前10，其余折叠 */}
-      <div className="flex items-center justify-end mb-3">
-        <button
-          className={cn('text-xs text-muted hover:text-content', query.isFetching && 'animate-pulse pointer-events-none')}
-          onClick={() => queryClient.invalidateQueries({ queryKey: ['vod-categories'] })}
-          disabled={query.isFetching}
-        >
-          刷新分类
-        </button>
-      </div>
-      {query.isError ? (
-        <p className="text-center text-sm text-faint py-8">分类加载失败，可稍后重试</p>
-      ) : query.isLoading ? (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="h-7 w-16 rounded-full bg-chip animate-pulse" />
-          ))}
-        </div>
-      ) : cats.length === 0 ? (
-        <p className="text-center text-sm text-faint py-8">该源暂无可用分类</p>
-      ) : (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {visibleCats.map((c) => (
-            <button
-              key={c.id}
-              className={cn(
-                'px-2.5 py-1 rounded-full text-xs transition-colors',
-                c.id === typeId ? 'bg-accent text-on-accent' : 'bg-chip text-muted hover:text-content hover:bg-hover'
-              )}
-              onClick={() => switchCat(c.id)}
-            >
-              {c.name}
-            </button>
-          ))}
-          {collapsed > 0 && (
-            <button
-              className="px-2.5 py-1 rounded-full text-xs bg-chip text-muted hover:text-content hover:bg-hover"
-              onClick={() => setCatExpanded(true)}
-            >
-              展开更多
-            </button>
-          )}
-          {catExpanded && cats.length > BROWSE_CATEGORY_LIMIT && (
-            <button
-              className="px-2.5 py-1 rounded-full text-xs bg-chip text-muted hover:text-content hover:bg-hover"
-              onClick={() => setCatExpanded(false)}
-            >
-              收起
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* 分类内容 */}
-      {typeId === null ? null : listQuery.isError ? (
-        <p className="text-center text-sm text-faint py-8">该分类加载失败，可稍后重试</p>
-      ) : listQuery.isLoading && page === 1 ? (
-        <GridSkeleton />
-      ) : accum.length === 0 && !listQuery.isFetching ? (
-        <p className="text-center text-sm text-faint py-8">该分类暂无内容</p>
-      ) : (
-        <>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
-            {accum.map((item) => (
-              <VodPosterCard key={`${item.sourceKey}:${item.vodId}`} item={item} onClick={() => onOpen(item)} />
-            ))}
-          </div>
-          <div className="flex items-center justify-center gap-3 mt-4">
-            {listQuery.isFetching && <span className="text-xs text-faint">加载中…</span>}
-            {!listQuery.isFetching && page < pagecount && (
-              <button className="btn-ghost btn-sm" onClick={() => setPage((p) => p + 1)}>
-                加载更多
-              </button>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** 聚合模式：全源分类归一，默认前10、其余折叠 */
-function AggregateBrowser({ onOpen }: { onOpen: (item: SearchResultItem) => void }) {
   const sources = useAvailableSources();
   const yellowFilter = useAppStore((s) => s.yellowFilter);
   const queryClient = useQueryClient();
+  const { query, hash: sourcesHash } = useCategoriesQuery(sources, primary !== 'recommend');
+
+  const activePrimary = TAXONOMY.find((p) => p.key === primary) ?? null;
+  const activeSubKey =
+    activePrimary && activePrimary.subs.length > 0 ? (secondary ?? activePrimary.subs[0].key) : null;
+
+  // 各源类目 → 两级分类映射（同名跨源 type_id 各异，在此按关键词归一）
+  const mapping = useMemo(() => {
+    const m = new Map<string, { typeId: number; primary: string; secondary: string | null }[]>();
+    for (const s of query.data?.sources ?? []) {
+      if (!s.ok) continue;
+      const arr: { typeId: number; primary: string; secondary: string | null }[] = [];
+      for (const c of s.categories) {
+        for (const h of matchSourceCategory(c.name)) {
+          arr.push({ typeId: c.id, primary: h.primary, secondary: h.secondary });
+        }
+      }
+      m.set(s.sourceKey, arr);
+    }
+    return m;
+  }, [query.data]);
+
   const byKey = useMemo(() => new Map(sources.map((s) => [s.key, s])), [sources]);
 
-  const { query, hash: sourcesHash } = useCategoriesQuery(sources, true);
-  const [catExpanded, setCatExpanded] = useState(false);
-  const [catKey, setCatKey] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [accum, setAccum] = useState<SearchResultItem[]>([]);
-
-  const merged = useMemo(() => {
-    const rows = query.data?.merged ?? [];
-    return yellowFilter ? rows.filter((m) => !isAdultContent(m.name)) : rows;
-  }, [query.data, yellowFilter]);
-  const { visible: visibleCats, collapsed } = sliceCategories(merged, catExpanded);
-
-  useEffect(() => {
-    setCatExpanded(false);
-    setCatKey(null);
-    setPage(1);
-    setAccum([]);
-  }, [sourcesHash]);
-  useEffect(() => {
-    if (merged.length === 0) {
-      if (catKey !== null) {
-        setCatKey(null);
-        setPage(1);
-        setAccum([]);
-      }
-      return;
-    }
-    if (catKey === null || !merged.some((m) => m.key === catKey)) {
-      setCatKey(merged[0].key);
-      setPage(1);
-      setAccum([]);
-    }
-  }, [merged, catKey]);
-
-  const active = merged.find((m) => m.key === catKey) ?? null;
+  // 当前节点在全源的 typeId 目标："全部X"取该一级下全部命中并集
   const targets = useMemo(() => {
-    if (!active) return [];
+    if (!activePrimary || primary === 'hot' || primary === 'recommend') return [];
     const grouped = new Map<string, number[]>();
-    for (const r of active.refs) {
-      if (!byKey.has(r.sourceKey)) continue;
-      if (!grouped.has(r.sourceKey)) grouped.set(r.sourceKey, []);
-      grouped.get(r.sourceKey)!.push(r.typeId);
+    for (const [sourceKey, refs] of mapping) {
+      const src = byKey.get(sourceKey);
+      if (!src) continue;
+      const ids = [
+        ...new Set(
+          refs
+            .filter(
+              (r) =>
+                r.primary === primary &&
+                (activeSubKey === null || activeSubKey === 'all' || r.secondary === activeSubKey)
+            )
+            .map((r) => r.typeId)
+        ),
+      ];
+      if (ids.length > 0) grouped.set(sourceKey, ids);
     }
     return [...grouped.entries()].map(([key, typeIds]) => ({
       source: byKey.get(key) as SourceConfig,
       typeIds,
     }));
-  }, [active, byKey]);
+  }, [mapping, primary, activeSubKey, activePrimary, byKey]);
+  const targetsKey = targets.map((t) => t.source.key).sort().join(',');
 
+  // 最近最火：全源最新入库（服务端已按更新时间倒序），只收国内内容
+  const hotQuery = useQuery({
+    queryKey: ['taxonomy-hot', sourcesHash, yellowFilter],
+    queryFn: ({ signal }) => api.latest(sources, yellowFilter, signal),
+    enabled: primary === 'hot' && sources.length > 0,
+    staleTime: 10 * 60 * 1000,
+  });
+  const hotItems = useMemo(() => filterDomesticItems(hotQuery.data?.items ?? []), [hotQuery.data]);
+
+  // 分类节点：多源多 typeId 并行合并，本地追加翻页
   const listQuery = useQuery({
-    queryKey: ['vod-list-agg', catKey, page, yellowFilter, targets.map((t) => t.source.key).sort().join(',')],
+    queryKey: ['vod-list-tax', primary, activeSubKey, page, yellowFilter, targetsKey],
     queryFn: ({ signal }) => api.vodListAggregate(targets, page, yellowFilter, signal),
-    enabled: targets.length > 0,
+    enabled: !!activePrimary && primary !== 'hot' && primary !== 'recommend' && targets.length > 0,
     staleTime: 10 * 60 * 1000,
   });
   useEffect(() => {
     if (!listQuery.data) return;
-    const rows = listQuery.data.list;
+    const rows = activePrimary?.overseas ? listQuery.data.list : filterDomesticItems(listQuery.data.list);
     setAccum((prev) => (page === 1 ? rows : [...prev, ...rows]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listQuery.data]);
 
-  const switchCat = (key: string) => {
-    if (key === catKey) return;
-    setCatKey(key);
+  const switchPrimary = (key: string) => {
+    if (key === primary) return;
+    setPrimary(key);
+    setSecondary(null);
     setPage(1);
     setAccum([]);
   };
+  const switchSub = (key: string) => {
+    if (key === activeSubKey) return;
+    setSecondary(key);
+    setPage(1);
+    setAccum([]);
+  };
+  // 源集合 / 成人过滤变化时回到默认选中并清空列表
+  useEffect(() => {
+    setSecondary(null);
+    setPage(1);
+    setAccum([]);
+  }, [primary, sourcesHash, yellowFilter]);
 
   if (sources.length === 0) {
     return <p className="text-center text-sm text-faint py-8">暂无可用点播源：请先登录并在设置中添加或勾选点播源</p>;
   }
 
-
   return (
-    <div>
+    <section aria-label="分类浏览">
+      <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1 -mx-1 px-1" role="tablist" aria-label="分类">
+        {PRIMARY_TABS.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={primary === t.key}
+            className={cn(
+              'px-2.5 py-1 rounded-md text-[13px] transition-colors shrink-0',
+              primary === t.key ? 'bg-accent text-on-accent' : 'bg-chip text-muted hover:text-content hover:bg-hover'
+            )}
+            onClick={() => switchPrimary(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {activePrimary && activePrimary.subs.length > 0 && (
+        <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 -mx-1 px-1" role="tablist" aria-label="子分类">
+          {activePrimary.subs.map((s) => (
+            <button
+              key={s.key}
+              role="tab"
+              aria-selected={activeSubKey === s.key}
+              className={cn(
+                'px-2.5 py-1 rounded-full text-xs transition-colors',
+                activeSubKey === s.key ? 'bg-accent text-on-accent' : 'bg-chip text-muted hover:text-content hover:bg-hover'
+              )}
+              onClick={() => switchSub(s.key)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center justify-end mb-3">
         <button
           className={cn('text-xs text-muted hover:text-content', query.isFetching && 'animate-pulse pointer-events-none')}
@@ -381,50 +222,29 @@ function AggregateBrowser({ onOpen }: { onOpen: (item: SearchResultItem) => void
         </button>
       </div>
 
-      {query.isError ? (
+      {primary === 'recommend' ? (
+        <RecommendSection onPick={onPick} onOpen={onOpen} />
+      ) : primary === 'hot' ? (
+        hotQuery.isError ? (
+          <p className="text-center text-sm text-faint py-8">最近最火加载失败，可稍后重试</p>
+        ) : hotQuery.isLoading ? (
+          <GridSkeleton />
+        ) : hotItems.length === 0 && !hotQuery.isFetching ? (
+          <p className="text-center text-sm text-faint py-8">暂无内容</p>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
+            {hotItems.map((item) => (
+              <VodPosterCard key={`${item.sourceKey}:${item.vodId}`} item={item} onClick={() => onOpen(item)} showSource />
+            ))}
+          </div>
+        )
+      ) : query.isError ? (
         <p className="text-center text-sm text-faint py-8">分类加载失败，可稍后重试</p>
       ) : query.isLoading ? (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="h-7 w-16 rounded-full bg-chip animate-pulse" />
-          ))}
-        </div>
-      ) : merged.length === 0 ? (
-        <p className="text-center text-sm text-faint py-8">暂无可用分类</p>
-      ) : (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {visibleCats.map((c) => (
-            <button
-              key={c.key}
-              className={cn(
-                'px-2.5 py-1 rounded-full text-xs transition-colors',
-                c.key === catKey ? 'bg-accent text-on-accent' : 'bg-chip text-muted hover:text-content hover:bg-hover'
-              )}
-              onClick={() => switchCat(c.key)}
-            >
-              {c.name}
-            </button>
-          ))}
-          {collapsed > 0 && (
-            <button
-              className="px-2.5 py-1 rounded-full text-xs bg-chip text-muted hover:text-content hover:bg-hover"
-              onClick={() => setCatExpanded(true)}
-            >
-              展开更多
-            </button>
-          )}
-          {catExpanded && merged.length > BROWSE_CATEGORY_LIMIT && (
-            <button
-              className="px-2.5 py-1 rounded-full text-xs bg-chip text-muted hover:text-content hover:bg-hover"
-              onClick={() => setCatExpanded(false)}
-            >
-              收起
-            </button>
-          )}
-        </div>
-      )}
-
-      {catKey === null ? null : listQuery.isError ? (
+        <GridSkeleton />
+      ) : targets.length === 0 ? (
+        <p className="text-center text-sm text-faint py-8">该分类暂无可用片源</p>
+      ) : listQuery.isError ? (
         <p className="text-center text-sm text-faint py-8">该分类加载失败，可稍后重试</p>
       ) : listQuery.isLoading && page === 1 ? (
         <GridSkeleton />
@@ -447,7 +267,7 @@ function AggregateBrowser({ onOpen }: { onOpen: (item: SearchResultItem) => void
           </div>
         </>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -521,3 +341,4 @@ function GridSkeleton() {
     </div>
   );
 }
+

@@ -606,15 +606,15 @@ function ChannelHall({
         <p className="text-center text-sm text-faint py-16">没有匹配的频道，换个关键词或分组试试</p>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2">
             {visible.map((c) => (
               <button
                 key={c.url}
                 onClick={() => onSelect(c)}
                 title={c.name}
-                className="card p-3 flex flex-col items-center gap-2 hover:border-accent transition-colors text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                className="card p-2.5 flex flex-col items-center gap-1.5 hover:border-accent transition-colors text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
               >
-                <span className="h-12 w-full flex items-center justify-center">
+                <span className="h-10 w-full flex items-center justify-center">
                   {c.logo && !logoFailed[c.url] ? (
                     <SmartImage
                       url={c.logo}

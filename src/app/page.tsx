@@ -259,7 +259,7 @@ function HomeContent() {
         {!urlQuery && (
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-x-0 top-0 h-[420px] -z-10"
+            className="pointer-events-none absolute inset-x-0 top-0 h-[280px] -z-10"
             style={{
               background:
                 'radial-gradient(60% 60% at 50% 0%, rgba(35,173,229,0.10) 0%, rgba(35,173,229,0.03) 45%, transparent 75%)',
@@ -268,15 +268,11 @@ function HomeContent() {
         )}
 
         {/* 搜索区 */}
-        <section className={cn('flex flex-col items-center', urlQuery ? 'mb-6' : 'mt-8 mb-8')}>
-          {!urlQuery && (
-            <header className="text-center mb-6">
-              <h1 className="text-4xl sm:text-5xl font-bold brand-gradient">fuhuiTV</h1>
-            </header>
-          )}
+        <section className={cn('flex flex-col items-center', urlQuery ? 'mb-6' : 'mt-4 mb-5')}>
+          <h1 className="sr-only">fuhuiTV 视频搜索</h1>
           {urlQuery && <h1 className="sr-only">fuhuiTV 视频搜索</h1>}
           {/* 定位容器比胶囊宽一圈：浮层按它的宽度对齐，接缝处不会与胶囊边框错位 1px */}
-          <div ref={searchHistory.containerRef} className="relative w-full max-w-2xl">
+          <div ref={searchHistory.containerRef} className="relative w-full max-w-xl">
             <form
               className="w-full"
               onSubmit={(e) => {
@@ -506,3 +502,4 @@ function NoSourceGuide({ hasSources = false }: { hasSources?: boolean }) {
     </div>
   );
 }
+
